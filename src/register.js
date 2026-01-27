@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { REST, Routes } from 'discord.js';
 import { data as leetcodeCommand } from './commands/leetcode.js';
+import { data as logCommand } from './commands/log.js';
 
 const commands = [
   {
@@ -8,6 +9,7 @@ const commands = [
     description: 'Replies with Pong!',
   },
   leetcodeCommand.toJSON(),
+  logCommand.toJSON(),
 ];
 
 const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);

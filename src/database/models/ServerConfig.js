@@ -11,5 +11,13 @@ export default function defineServerConfig(sequelize) {
       type: DataTypes.STRING,
       allowNull: true,
     },
+    studyCategoryId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    studySummaryChannelId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
   });
 }
