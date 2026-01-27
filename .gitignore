@@ -148,3 +148,5 @@ vite.config.ts.timestamp-*
 .pm2/
 pm2-error.log
 pm2-out.log
+*.sqlite
+**.sqlite
