@@ -6,7 +6,8 @@ import {
   ButtonStyle,
   ChannelType,
 } from 'discord.js';
-import { PomodoroSession } from '../database/index.js';
+import { Op } from 'sequelize';
+import { PomodoroSession, PomodoroCycle } from '../database/index.js';
 import {
   joinVC,
   leaveVC,
@@ -21,7 +22,7 @@ const activeTimers = new Map();
 // In-memory storage for break timers
 const breakTimers = new Map();
 
-// Helper to create join/leave buttons for active timers
+// Helper to create join/leave/skip-to-break buttons for active timers
 function createActiveTimerButtons(sessionId) {
   const joinButton = new ButtonBuilder()
     .setCustomId(`pomodoro-join_${sessionId}`)
@@ -33,7 +34,12 @@ function createActiveTimerButtons(sessionId) {
     .setLabel('Leave')
     .setStyle(ButtonStyle.Danger);
 
-  return new ActionRowBuilder().addComponents(joinButton, leaveButton);
+  const skipToBreakButton = new ButtonBuilder()
+    .setCustomId(`pomodoro-skiptobreak_${sessionId}`)
+    .setLabel('Skip to Break')
+    .setStyle(ButtonStyle.Secondary);
+
+  return new ActionRowBuilder().addComponents(joinButton, leaveButton, skipToBreakButton);
 }
 
 export const data = new SlashCommandBuilder()
@@ -79,6 +85,21 @@ export const data = new SlashCommandBuilder()
   .addSubcommand(subcommand =>
     subcommand.setName('stop').setDescription('Stop the active pomodoro timer')
   )
+  .addSubcommand(subcommand =>
+    subcommand
+      .setName('leaderboard')
+      .setDescription('View the pomodoro leaderboard')
+      .addStringOption(option =>
+        option
+          .setName('timeframe')
+          .setDescription('Leaderboard timeframe (default: all-time)')
+          .setRequired(false)
+          .addChoices(
+            { name: 'All Time', value: 'alltime' },
+            { name: 'Today', value: 'daily' }
+          )
+      )
+  )
 
 export async function execute(interaction) {
   const subcommand = interaction.options.getSubcommand();
@@ -98,6 +119,9 @@ export async function execute(interaction) {
       break;
     case 'stop':
       await handleStop(interaction);
+      break;
+    case 'leaderboard':
+      await handleLeaderboard(interaction);
       break;
   }
 }
@@ -132,17 +156,17 @@ export async function handleButtonInteraction(interaction, client) {
     session.participants = participants;
     await session.save();
 
-    const timeLeft = Math.ceil((new Date(session.endsAt) - new Date()) / 60000);
+    const endsAtTimestamp = Math.floor(new Date(session.endsAt).getTime() / 1000);
     const participantMentions = participants.map(id => `<@${id}>`).join(', ');
 
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
       .setTitle('Pomodoro Timer')
-      .setDescription(`${interaction.user} joined! A ${session.duration} minute session is in progress.`)
+      .setDescription(`${interaction.user} joined! A ${session.duration} minute session is in progress.\nEnds <t:${endsAtTimestamp}:R>`)
       .addFields(
         { name: 'Duration', value: `${session.duration} minutes`, inline: true },
-        { name: 'Time Remaining', value: `${timeLeft} minutes`, inline: true },
-        { name: 'Ends At', value: `<t:${Math.floor(new Date(session.endsAt).getTime() / 1000)}:T>`, inline: true },
+        { name: 'Break', value: `${session.breakDuration} minutes`, inline: true },
+        { name: 'Ends At', value: `<t:${endsAtTimestamp}:T>`, inline: true },
         { name: 'Participants', value: participantMentions }
       )
       .setTimestamp();
@@ -176,23 +200,93 @@ export async function handleButtonInteraction(interaction, client) {
     session.participants = updatedParticipants;
     await session.save();
 
-    const timeLeft = Math.ceil((new Date(session.endsAt) - new Date()) / 60000);
+    const endsAtTimestamp = Math.floor(new Date(session.endsAt).getTime() / 1000);
     const participantMentions = updatedParticipants.map(id => `<@${id}>`).join(', ') || 'None';
 
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
       .setTitle('Pomodoro Timer')
-      .setDescription(`${interaction.user} left the session.`)
+      .setDescription(`${interaction.user} left the session.\nEnds <t:${endsAtTimestamp}:R>`)
       .addFields(
         { name: 'Duration', value: `${session.duration} minutes`, inline: true },
-        { name: 'Time Remaining', value: `${timeLeft} minutes`, inline: true },
-        { name: 'Ends At', value: `<t:${Math.floor(new Date(session.endsAt).getTime() / 1000)}:T>`, inline: true },
+        { name: 'Break', value: `${session.breakDuration} minutes`, inline: true },
+        { name: 'Ends At', value: `<t:${endsAtTimestamp}:T>`, inline: true },
         { name: 'Participants', value: participantMentions }
       )
       .setTimestamp();
 
     const row = createActiveTimerButtons(session.id);
     await interaction.update({ embeds: [embed], components: [row] });
+    return true;
+  }
+
+  if (action === 'pomodoro-skiptobreak') {
+    const session = await PomodoroSession.findByPk(parseInt(sessionId));
+    if (!session || !session.isActive) {
+      await interaction.reply({
+        content: 'This pomodoro session is no longer active.',
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    // Acknowledge the interaction immediately to avoid timeout
+    await interaction.deferUpdate();
+
+    // Clear the scheduled timer
+    const timerKey = `${session.guildId}_${session.channelId}`;
+    const timerId = activeTimers.get(timerKey);
+    if (timerId) {
+      clearTimeout(timerId);
+      activeTimers.delete(timerKey);
+    }
+
+    session.isActive = false;
+    await session.save();
+
+    // No cycle is logged — skipping to break does not count as a completed cycle
+
+    // Play TTS if in voice, then leave
+    if (session.voiceChannelId && getConnection(session.guildId)) {
+      try {
+        await playPomodoroComplete(session.guildId);
+      } catch (err) {
+        console.error('TTS error:', err);
+      }
+      leaveVC(session.guildId);
+    }
+
+    const participantMentions = session.participants.map(id => `<@${id}>`).join(', ') || 'None';
+
+    const embed = new EmbedBuilder()
+      .setColor(0x57f287)
+      .setTitle('Pomodoro Skipped!')
+      .setDescription(
+        `Session skipped to break. Time for a ${session.breakDuration} minute break!`
+      )
+      .addFields(
+        { name: 'Participants', value: participantMentions }
+      )
+      .setTimestamp();
+
+    const breakButton = new ButtonBuilder()
+      .setCustomId(`pomodoro-break_${session.id}`)
+      .setLabel(`Start ${session.breakDuration}min Break`)
+      .setStyle(ButtonStyle.Primary);
+
+    const repeatButton = new ButtonBuilder()
+      .setCustomId(`pomodoro-repeat_${session.id}`)
+      .setLabel('Skip Break & Start Another')
+      .setStyle(ButtonStyle.Success);
+
+    const dismissButton = new ButtonBuilder()
+      .setCustomId(`pomodoro-dismiss_${session.id}`)
+      .setLabel('Dismiss')
+      .setStyle(ButtonStyle.Secondary);
+
+    const row = new ActionRowBuilder().addComponents(breakButton, repeatButton, dismissButton);
+
+    await interaction.editReply({ embeds: [embed], components: [row] });
     return true;
   }
 
@@ -219,13 +313,13 @@ export async function handleButtonInteraction(interaction, client) {
     const breakDuration = session.breakDuration || 5;
     const endsAt = new Date(Date.now() + breakDuration * 60 * 1000);
 
+    const endsAtTimestamp = Math.floor(endsAt.getTime() / 1000);
+
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
       .setTitle('Break Time!')
-      .setDescription(`Taking a ${breakDuration} minute break. You'll be pinged when it's time to start another pomodoro!`)
+      .setDescription(`Taking a ${breakDuration} minute break. You'll be pinged when it's time to start another pomodoro!\nEnds <t:${endsAtTimestamp}:R>`)
       .addFields(
-        { name: 'Duration', value: `${breakDuration} minutes`, inline: true },
-        { name: 'Ends At', value: `<t:${Math.floor(endsAt.getTime() / 1000)}:T>`, inline: true },
         { name: 'Participants', value: session.participants.map(id => `<@${id}>`).join(', ') || 'None' }
       )
       .setTimestamp();
@@ -301,17 +395,26 @@ export async function handleButtonInteraction(interaction, client) {
 
     scheduleTimer(newSession, client);
 
-    // Play TTS if in voice
-    if (session.voiceChannelId && getConnection(session.guildId)) {
-      playPomodoroStart(session.guildId).catch(err => console.error('TTS error:', err));
+    // Rejoin voice and play TTS if session had a voice channel
+    if (session.voiceChannelId) {
+      try {
+        const voiceChannel = await client.channels.fetch(session.voiceChannelId);
+        if (voiceChannel) await joinVC(voiceChannel);
+        playPomodoroStart(session.guildId).catch(err => console.error('TTS error:', err));
+        leaveVC();
+      } catch (err) {
+        console.error('Failed to rejoin voice channel:', err);
+      }
     }
 
     const participantMentions = session.participants.map(id => `<@${id}>`).join(', ');
 
+    const endsAtTimestamp = Math.floor(endsAt.getTime() / 1000);
+
     const fields = [
       { name: 'Duration', value: `${session.duration} minutes`, inline: true },
       { name: 'Break', value: `${session.breakDuration} minutes`, inline: true },
-      { name: 'Ends At', value: `<t:${Math.floor(endsAt.getTime() / 1000)}:T>`, inline: true },
+      { name: 'Ends At', value: `<t:${endsAtTimestamp}:T>`, inline: true },
       { name: 'Participants', value: participantMentions || 'None yet' },
     ];
     if (session.voiceChannelId) {
@@ -321,7 +424,7 @@ export async function handleButtonInteraction(interaction, client) {
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
       .setTitle('Pomodoro Timer Started!')
-      .setDescription(`Break skipped! A new ${session.duration} minute pomodoro has started!`)
+      .setDescription(`Break skipped! A new ${session.duration} minute pomodoro has started!\nEnds <t:${endsAtTimestamp}:R>`)
       .addFields(fields)
       .setFooter({ text: `Started by ${interaction.user.username}` })
       .setTimestamp();
@@ -385,17 +488,26 @@ export async function handleButtonInteraction(interaction, client) {
     // Schedule the timer
     scheduleTimer(newSession, client);
 
-    // Play TTS if in voice
-    if (session.voiceChannelId && getConnection(session.guildId)) {
-      playPomodoroStart(session.guildId).catch(err => console.error('TTS error:', err));
+    // Rejoin voice and play TTS if session had a voice channel
+    if (session.voiceChannelId) {
+      try {
+        const voiceChannel = await client.channels.fetch(session.voiceChannelId);
+        if (voiceChannel) await joinVC(voiceChannel);
+        playPomodoroStart(session.guildId).catch(err => console.error('TTS error:', err));
+        leaveVC();
+      } catch (err) {
+        console.error('Failed to rejoin voice channel:', err);
+      }
     }
 
     const participantMentions = session.participants.map(id => `<@${id}>`).join(', ');
 
+    const endsAtTimestamp = Math.floor(endsAt.getTime() / 1000);
+
     const fields = [
       { name: 'Duration', value: `${session.duration} minutes`, inline: true },
       { name: 'Break', value: `${session.breakDuration} minutes`, inline: true },
-      { name: 'Ends At', value: `<t:${Math.floor(endsAt.getTime() / 1000)}:T>`, inline: true },
+      { name: 'Ends At', value: `<t:${endsAtTimestamp}:T>`, inline: true },
       { name: 'Participants', value: participantMentions || 'None yet' },
     ];
     if (session.voiceChannelId) {
@@ -405,7 +517,7 @@ export async function handleButtonInteraction(interaction, client) {
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
       .setTitle('Pomodoro Timer Started!')
-      .setDescription(`A new ${session.duration} minute pomodoro has started! Click **Join** to participate!`)
+      .setDescription(`A new ${session.duration} minute pomodoro has started! Click **Join** to participate!\nEnds <t:${endsAtTimestamp}:R>`)
       .addFields(fields)
       .setFooter({ text: `Started by ${interaction.user.username}` })
       .setTimestamp();
@@ -439,14 +551,14 @@ async function handleStart(interaction) {
   });
 
   if (existingSession) {
-    const timeLeft = Math.ceil((new Date(existingSession.endsAt) - new Date()) / 60000);
+    const endsAtTimestamp = Math.floor(new Date(existingSession.endsAt).getTime() / 1000);
     await interaction.reply({
-      content: `There's already an active pomodoro timer in this channel with ${timeLeft} minutes remaining. Use \`/pomodoro join\` to join it!`,
+      content: `There's already an active pomodoro timer in this channel ending <t:${endsAtTimestamp}:R>. Use \`/pomodoro join\` to join it!`,
       ephemeral: true,
     });
     return;
   }
-
+  
   // Join voice channel if specified
   let voiceChannelId = null;
   if (voiceChannel) {
@@ -481,15 +593,19 @@ async function handleStart(interaction) {
   // Schedule the timer completion
   scheduleTimer(session, interaction.client);
 
-  // Play TTS announcement if in voice
+  // Play TTS announcement if in voice, then leave after it finishes
   if (voiceChannelId) {
-    playPomodoroStart(guildId).catch(err => console.error('TTS error:', err));
+    playPomodoroStart(guildId)
+      .catch(err => console.error('TTS error:', err))
+      .finally(() => leaveVC(guildId));
   }
+
+  const endsAtTimestamp = Math.floor(endsAt.getTime() / 1000);
 
   const fields = [
     { name: 'Duration', value: `${duration} minutes`, inline: true },
     { name: 'Break', value: `${breakDuration} minutes`, inline: true },
-    { name: 'Ends At', value: `<t:${Math.floor(endsAt.getTime() / 1000)}:T>`, inline: true },
+    { name: 'Ends At', value: `<t:${endsAtTimestamp}:T>`, inline: true },
     { name: 'Participants', value: `<@${interaction.user.id}>` },
   ];
 
@@ -501,7 +617,7 @@ async function handleStart(interaction) {
     .setColor(0x57f287)
     .setTitle('Pomodoro Timer Started!')
     .setDescription(
-      `A ${duration} minute pomodoro session has started. Click **Join** to participate!`
+      `A ${duration} minute pomodoro session has started. Click **Join** to participate!\nEnds <t:${endsAtTimestamp}:R>`
     )
     .addFields(fields)
     .setFooter({ text: `Started by ${interaction.user.username}` })
@@ -544,15 +660,14 @@ async function handleJoin(interaction) {
   session.participants = participants;
   await session.save();
 
-  const timeLeft = Math.ceil((new Date(session.endsAt) - new Date()) / 60000);
+  const endsAtTimestamp = Math.floor(new Date(session.endsAt).getTime() / 1000);
   const participantMentions = participants.map(id => `<@${id}>`).join(', ');
 
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle('Joined Pomodoro Session!')
-    .setDescription(`${interaction.user} has joined the pomodoro session!`)
+    .setDescription(`${interaction.user} has joined the pomodoro session!\nEnds <t:${endsAtTimestamp}:R>`)
     .addFields(
-      { name: 'Time Remaining', value: `${timeLeft} minutes`, inline: true },
       { name: 'Participants', value: participantMentions }
     )
     .setTimestamp();
@@ -617,31 +732,18 @@ async function handleStatus(interaction) {
     return;
   }
 
-  const now = new Date();
   const endsAt = new Date(session.endsAt);
-  const timeLeftMs = endsAt - now;
-  const timeLeftMins = Math.ceil(timeLeftMs / 60000);
-  const timeLeftSecs = Math.ceil(timeLeftMs / 1000);
+  const endsAtTimestamp = Math.floor(endsAt.getTime() / 1000);
 
   const participantMentions = session.participants.map(id => `<@${id}>`).join(', ');
-
-  // Format time remaining nicely
-  let timeDisplay;
-  if (timeLeftMins > 1) {
-    timeDisplay = `${timeLeftMins} minutes`;
-  } else if (timeLeftSecs > 0) {
-    timeDisplay = `${timeLeftSecs} seconds`;
-  } else {
-    timeDisplay = 'Ending soon...';
-  }
 
   const embed = new EmbedBuilder()
     .setColor(0xfee75c)
     .setTitle('Pomodoro Timer Status')
+    .setDescription(`Ends <t:${endsAtTimestamp}:R>`)
     .addFields(
       { name: 'Duration', value: `${session.duration} minutes`, inline: true },
-      { name: 'Time Remaining', value: timeDisplay, inline: true },
-      { name: 'Ends At', value: `<t:${Math.floor(endsAt.getTime() / 1000)}:T>`, inline: true },
+      { name: 'Ends At', value: `<t:${endsAtTimestamp}:T>`, inline: true },
       { name: 'Participants', value: participantMentions || 'None' }
     )
     .setFooter({ text: `Started by user ${session.creatorId}` })
@@ -702,6 +804,61 @@ async function handleStop(interaction) {
   await interaction.reply({ embeds: [embed] });
 }
 
+async function handleLeaderboard(interaction) {
+  const timeframe = interaction.options.getString('timeframe') || 'alltime';
+  const guildId = interaction.guild.id;
+
+  const whereClause = { guildId };
+  if (timeframe === 'daily') {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    whereClause.createdAt = { [Op.gte]: today };
+  }
+
+  const cycles = await PomodoroCycle.findAll({
+    where: whereClause,
+    attributes: [
+      'userDiscordId',
+      [PomodoroCycle.sequelize.fn('COUNT', PomodoroCycle.sequelize.col('id')), 'cycleCount'],
+      [PomodoroCycle.sequelize.fn('SUM', PomodoroCycle.sequelize.col('duration')), 'totalMinutes'],
+    ],
+    group: ['userDiscordId'],
+    order: [[PomodoroCycle.sequelize.literal('cycleCount'), 'DESC']],
+    limit: 10,
+    raw: true,
+  });
+
+  if (cycles.length === 0) {
+    await interaction.reply({
+      content: timeframe === 'daily'
+        ? 'No pomodoro cycles completed today yet. Start one with `/pomodoro start`!'
+        : 'No pomodoro cycles completed yet. Start one with `/pomodoro start`!',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const entries = cycles.map((row, index) => {
+    const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+    const hours = Math.floor(row.totalMinutes / 60);
+    const mins = row.totalMinutes % 60;
+    const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+    return `${medal} <@${row.userDiscordId}> — **${row.cycleCount}** cycles (${timeStr})`;
+  });
+
+  const title = timeframe === 'daily'
+    ? `${interaction.guild.name} — Today's Pomodoro Leaderboard`
+    : `${interaction.guild.name} — All-Time Pomodoro Leaderboard`;
+
+  const embed = new EmbedBuilder()
+    .setColor(0x57f287)
+    .setTitle(title)
+    .setDescription(entries.join('\n'))
+    .setTimestamp();
+
+  await interaction.reply({ embeds: [embed] });
+}
+
 function scheduleTimer(session, client) {
   const timerKey = `${session.guildId}_${session.channelId}`;
   const timeUntilEnd = new Date(session.endsAt) - new Date();
@@ -731,9 +888,31 @@ async function completeTimer(session, client) {
   currentSession.isActive = false;
   await currentSession.save();
 
-  // Play TTS notification if in voice channel
-  if (currentSession.voiceChannelId && getConnection(currentSession.guildId)) {
-    playPomodoroComplete(currentSession.guildId).catch(err => console.error('TTS error:', err));
+  // Log a completed cycle for each participant
+  const participants = currentSession.participants;
+  if (participants.length > 0) {
+    await PomodoroCycle.bulkCreate(
+      participants.map(userId => ({
+        userDiscordId: userId,
+        guildId: currentSession.guildId,
+        duration: currentSession.duration,
+        sessionId: currentSession.id,
+      }))
+    );
+  }
+
+  // Rejoin voice channel if needed, play TTS notification, then leave
+  if (currentSession.voiceChannelId) {
+    try {
+      if (!getConnection(currentSession.guildId)) {
+        const voiceChannel = await client.channels.fetch(currentSession.voiceChannelId);
+        if (voiceChannel) await joinVC(voiceChannel);
+      }
+      await playPomodoroComplete(currentSession.guildId);
+    } catch (err) {
+      console.error('TTS error:', err);
+    }
+    leaveVC(currentSession.guildId);
   }
 
   try {
@@ -798,9 +977,18 @@ async function completeBreak(session, client) {
       return; // Don't send break end message if a new pomodoro is already running
     }
 
-    // Play TTS notification if in voice channel
-    if (session.voiceChannelId && getConnection(session.guildId)) {
-      playBreakComplete(session.guildId).catch(err => console.error('TTS error:', err));
+    // Rejoin voice channel if needed, play TTS notification, then leave
+    if (session.voiceChannelId) {
+      try {
+        if (!getConnection(session.guildId)) {
+          const voiceChannel = await client.channels.fetch(session.voiceChannelId);
+          if (voiceChannel) await joinVC(voiceChannel);
+        }
+        await playBreakComplete(session.guildId);
+      } catch (err) {
+        console.error('TTS error:', err);
+      }
+      leaveVC(session.guildId);
     }
 
     const participantMentions = session.participants.map(id => `<@${id}>`).join(' ');
