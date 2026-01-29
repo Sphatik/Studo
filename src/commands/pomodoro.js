@@ -156,17 +156,17 @@ export async function handleButtonInteraction(interaction, client) {
     session.participants = participants;
     await session.save();
 
-    const timeLeft = Math.ceil((new Date(session.endsAt) - new Date()) / 60000);
+    const endsAtTimestamp = Math.floor(new Date(session.endsAt).getTime() / 1000);
     const participantMentions = participants.map(id => `<@${id}>`).join(', ');
 
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
       .setTitle('Pomodoro Timer')
-      .setDescription(`${interaction.user} joined! A ${session.duration} minute session is in progress.`)
+      .setDescription(`${interaction.user} joined! A ${session.duration} minute session is in progress.\nEnds <t:${endsAtTimestamp}:R>`)
       .addFields(
         { name: 'Duration', value: `${session.duration} minutes`, inline: true },
-        { name: 'Time Remaining', value: `${timeLeft} minutes`, inline: true },
-        { name: 'Ends At', value: `<t:${Math.floor(new Date(session.endsAt).getTime() / 1000)}:T>`, inline: true },
+        { name: 'Break', value: `${session.breakDuration} minutes`, inline: true },
+        { name: 'Ends At', value: `<t:${endsAtTimestamp}:T>`, inline: true },
         { name: 'Participants', value: participantMentions }
       )
       .setTimestamp();
@@ -200,17 +200,17 @@ export async function handleButtonInteraction(interaction, client) {
     session.participants = updatedParticipants;
     await session.save();
 
-    const timeLeft = Math.ceil((new Date(session.endsAt) - new Date()) / 60000);
+    const endsAtTimestamp = Math.floor(new Date(session.endsAt).getTime() / 1000);
     const participantMentions = updatedParticipants.map(id => `<@${id}>`).join(', ') || 'None';
 
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
       .setTitle('Pomodoro Timer')
-      .setDescription(`${interaction.user} left the session.`)
+      .setDescription(`${interaction.user} left the session.\nEnds <t:${endsAtTimestamp}:R>`)
       .addFields(
         { name: 'Duration', value: `${session.duration} minutes`, inline: true },
-        { name: 'Time Remaining', value: `${timeLeft} minutes`, inline: true },
-        { name: 'Ends At', value: `<t:${Math.floor(new Date(session.endsAt).getTime() / 1000)}:T>`, inline: true },
+        { name: 'Break', value: `${session.breakDuration} minutes`, inline: true },
+        { name: 'Ends At', value: `<t:${endsAtTimestamp}:T>`, inline: true },
         { name: 'Participants', value: participantMentions }
       )
       .setTimestamp();
@@ -313,13 +313,13 @@ export async function handleButtonInteraction(interaction, client) {
     const breakDuration = session.breakDuration || 5;
     const endsAt = new Date(Date.now() + breakDuration * 60 * 1000);
 
+    const endsAtTimestamp = Math.floor(endsAt.getTime() / 1000);
+
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
       .setTitle('Break Time!')
-      .setDescription(`Taking a ${breakDuration} minute break. You'll be pinged when it's time to start another pomodoro!`)
+      .setDescription(`Taking a ${breakDuration} minute break. You'll be pinged when it's time to start another pomodoro!\nEnds <t:${endsAtTimestamp}:R>`)
       .addFields(
-        { name: 'Duration', value: `${breakDuration} minutes`, inline: true },
-        { name: 'Ends At', value: `<t:${Math.floor(endsAt.getTime() / 1000)}:T>`, inline: true },
         { name: 'Participants', value: session.participants.map(id => `<@${id}>`).join(', ') || 'None' }
       )
       .setTimestamp();
@@ -409,10 +409,12 @@ export async function handleButtonInteraction(interaction, client) {
 
     const participantMentions = session.participants.map(id => `<@${id}>`).join(', ');
 
+    const endsAtTimestamp = Math.floor(endsAt.getTime() / 1000);
+
     const fields = [
       { name: 'Duration', value: `${session.duration} minutes`, inline: true },
       { name: 'Break', value: `${session.breakDuration} minutes`, inline: true },
-      { name: 'Ends At', value: `<t:${Math.floor(endsAt.getTime() / 1000)}:T>`, inline: true },
+      { name: 'Ends At', value: `<t:${endsAtTimestamp}:T>`, inline: true },
       { name: 'Participants', value: participantMentions || 'None yet' },
     ];
     if (session.voiceChannelId) {
@@ -422,7 +424,7 @@ export async function handleButtonInteraction(interaction, client) {
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
       .setTitle('Pomodoro Timer Started!')
-      .setDescription(`Break skipped! A new ${session.duration} minute pomodoro has started!`)
+      .setDescription(`Break skipped! A new ${session.duration} minute pomodoro has started!\nEnds <t:${endsAtTimestamp}:R>`)
       .addFields(fields)
       .setFooter({ text: `Started by ${interaction.user.username}` })
       .setTimestamp();
@@ -500,10 +502,12 @@ export async function handleButtonInteraction(interaction, client) {
 
     const participantMentions = session.participants.map(id => `<@${id}>`).join(', ');
 
+    const endsAtTimestamp = Math.floor(endsAt.getTime() / 1000);
+
     const fields = [
       { name: 'Duration', value: `${session.duration} minutes`, inline: true },
       { name: 'Break', value: `${session.breakDuration} minutes`, inline: true },
-      { name: 'Ends At', value: `<t:${Math.floor(endsAt.getTime() / 1000)}:T>`, inline: true },
+      { name: 'Ends At', value: `<t:${endsAtTimestamp}:T>`, inline: true },
       { name: 'Participants', value: participantMentions || 'None yet' },
     ];
     if (session.voiceChannelId) {
@@ -513,7 +517,7 @@ export async function handleButtonInteraction(interaction, client) {
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
       .setTitle('Pomodoro Timer Started!')
-      .setDescription(`A new ${session.duration} minute pomodoro has started! Click **Join** to participate!`)
+      .setDescription(`A new ${session.duration} minute pomodoro has started! Click **Join** to participate!\nEnds <t:${endsAtTimestamp}:R>`)
       .addFields(fields)
       .setFooter({ text: `Started by ${interaction.user.username}` })
       .setTimestamp();
@@ -547,9 +551,9 @@ async function handleStart(interaction) {
   });
 
   if (existingSession) {
-    const timeLeft = Math.ceil((new Date(existingSession.endsAt) - new Date()) / 60000);
+    const endsAtTimestamp = Math.floor(new Date(existingSession.endsAt).getTime() / 1000);
     await interaction.reply({
-      content: `There's already an active pomodoro timer in this channel with ${timeLeft} minutes remaining. Use \`/pomodoro join\` to join it!`,
+      content: `There's already an active pomodoro timer in this channel ending <t:${endsAtTimestamp}:R>. Use \`/pomodoro join\` to join it!`,
       ephemeral: true,
     });
     return;
@@ -596,10 +600,12 @@ async function handleStart(interaction) {
       .finally(() => leaveVC(guildId));
   }
 
+  const endsAtTimestamp = Math.floor(endsAt.getTime() / 1000);
+
   const fields = [
     { name: 'Duration', value: `${duration} minutes`, inline: true },
     { name: 'Break', value: `${breakDuration} minutes`, inline: true },
-    { name: 'Ends At', value: `<t:${Math.floor(endsAt.getTime() / 1000)}:T>`, inline: true },
+    { name: 'Ends At', value: `<t:${endsAtTimestamp}:T>`, inline: true },
     { name: 'Participants', value: `<@${interaction.user.id}>` },
   ];
 
@@ -611,7 +617,7 @@ async function handleStart(interaction) {
     .setColor(0x57f287)
     .setTitle('Pomodoro Timer Started!')
     .setDescription(
-      `A ${duration} minute pomodoro session has started. Click **Join** to participate!`
+      `A ${duration} minute pomodoro session has started. Click **Join** to participate!\nEnds <t:${endsAtTimestamp}:R>`
     )
     .addFields(fields)
     .setFooter({ text: `Started by ${interaction.user.username}` })
@@ -654,15 +660,14 @@ async function handleJoin(interaction) {
   session.participants = participants;
   await session.save();
 
-  const timeLeft = Math.ceil((new Date(session.endsAt) - new Date()) / 60000);
+  const endsAtTimestamp = Math.floor(new Date(session.endsAt).getTime() / 1000);
   const participantMentions = participants.map(id => `<@${id}>`).join(', ');
 
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle('Joined Pomodoro Session!')
-    .setDescription(`${interaction.user} has joined the pomodoro session!`)
+    .setDescription(`${interaction.user} has joined the pomodoro session!\nEnds <t:${endsAtTimestamp}:R>`)
     .addFields(
-      { name: 'Time Remaining', value: `${timeLeft} minutes`, inline: true },
       { name: 'Participants', value: participantMentions }
     )
     .setTimestamp();
@@ -727,31 +732,18 @@ async function handleStatus(interaction) {
     return;
   }
 
-  const now = new Date();
   const endsAt = new Date(session.endsAt);
-  const timeLeftMs = endsAt - now;
-  const timeLeftMins = Math.ceil(timeLeftMs / 60000);
-  const timeLeftSecs = Math.ceil(timeLeftMs / 1000);
+  const endsAtTimestamp = Math.floor(endsAt.getTime() / 1000);
 
   const participantMentions = session.participants.map(id => `<@${id}>`).join(', ');
-
-  // Format time remaining nicely
-  let timeDisplay;
-  if (timeLeftMins > 1) {
-    timeDisplay = `${timeLeftMins} minutes`;
-  } else if (timeLeftSecs > 0) {
-    timeDisplay = `${timeLeftSecs} seconds`;
-  } else {
-    timeDisplay = 'Ending soon...';
-  }
 
   const embed = new EmbedBuilder()
     .setColor(0xfee75c)
     .setTitle('Pomodoro Timer Status')
+    .setDescription(`Ends <t:${endsAtTimestamp}:R>`)
     .addFields(
       { name: 'Duration', value: `${session.duration} minutes`, inline: true },
-      { name: 'Time Remaining', value: timeDisplay, inline: true },
-      { name: 'Ends At', value: `<t:${Math.floor(endsAt.getTime() / 1000)}:T>`, inline: true },
+      { name: 'Ends At', value: `<t:${endsAtTimestamp}:T>`, inline: true },
       { name: 'Participants', value: participantMentions || 'None' }
     )
     .setFooter({ text: `Started by user ${session.creatorId}` })
