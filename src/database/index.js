@@ -5,6 +5,7 @@ import defineServerConfig from './models/ServerConfig.js';
 import defineStudyLog from './models/StudyLog.js';
 import defineVoiceSession from './models/VoiceSession.js';
 import definePomodoroSession from './models/PomodoroSession.js';
+import definePomodoroCycle from './models/PomodoroCycle.js';
 
 const sequelize = new Sequelize({
   dialect: 'sqlite',
@@ -19,6 +20,7 @@ const ServerConfig = defineServerConfig(sequelize);
 const StudyLog = defineStudyLog(sequelize);
 const VoiceSession = defineVoiceSession(sequelize);
 const PomodoroSession = definePomodoroSession(sequelize);
+const PomodoroCycle = definePomodoroCycle(sequelize);
 
 // Define associations
 User.hasMany(Submission, { foreignKey: 'userDiscordId', sourceKey: 'discordId' });
@@ -30,4 +32,4 @@ StudyLog.belongsTo(User, { foreignKey: 'userDiscordId', targetKey: 'discordId' }
 User.hasMany(VoiceSession, { foreignKey: 'userDiscordId', sourceKey: 'discordId' });
 VoiceSession.belongsTo(User, { foreignKey: 'userDiscordId', targetKey: 'discordId' });
 
-export { sequelize, User, Submission, ServerConfig, StudyLog, VoiceSession, PomodoroSession };
+export { sequelize, User, Submission, ServerConfig, StudyLog, VoiceSession, PomodoroSession, PomodoroCycle };

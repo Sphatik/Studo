@@ -6,7 +6,8 @@ import {
   ButtonStyle,
   ChannelType,
 } from 'discord.js';
-import { PomodoroSession } from '../database/index.js';
+import { Op } from 'sequelize';
+import { PomodoroSession, PomodoroCycle } from '../database/index.js';
 import {
   joinVC,
   leaveVC,
@@ -79,6 +80,21 @@ export const data = new SlashCommandBuilder()
   .addSubcommand(subcommand =>
     subcommand.setName('stop').setDescription('Stop the active pomodoro timer')
   )
+  .addSubcommand(subcommand =>
+    subcommand
+      .setName('leaderboard')
+      .setDescription('View the pomodoro leaderboard')
+      .addStringOption(option =>
+        option
+          .setName('timeframe')
+          .setDescription('Leaderboard timeframe (default: all-time)')
+          .setRequired(false)
+          .addChoices(
+            { name: 'All Time', value: 'alltime' },
+            { name: 'Today', value: 'daily' }
+          )
+      )
+  )
 
 export async function execute(interaction) {
   const subcommand = interaction.options.getSubcommand();
@@ -98,6 +114,9 @@ export async function execute(interaction) {
       break;
     case 'stop':
       await handleStop(interaction);
+      break;
+    case 'leaderboard':
+      await handleLeaderboard(interaction);
       break;
   }
 }
@@ -702,6 +721,61 @@ async function handleStop(interaction) {
   await interaction.reply({ embeds: [embed] });
 }
 
+async function handleLeaderboard(interaction) {
+  const timeframe = interaction.options.getString('timeframe') || 'alltime';
+  const guildId = interaction.guild.id;
+
+  const whereClause = { guildId };
+  if (timeframe === 'daily') {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    whereClause.createdAt = { [Op.gte]: today };
+  }
+
+  const cycles = await PomodoroCycle.findAll({
+    where: whereClause,
+    attributes: [
+      'userDiscordId',
+      [PomodoroCycle.sequelize.fn('COUNT', PomodoroCycle.sequelize.col('id')), 'cycleCount'],
+      [PomodoroCycle.sequelize.fn('SUM', PomodoroCycle.sequelize.col('duration')), 'totalMinutes'],
+    ],
+    group: ['userDiscordId'],
+    order: [[PomodoroCycle.sequelize.literal('cycleCount'), 'DESC']],
+    limit: 10,
+    raw: true,
+  });
+
+  if (cycles.length === 0) {
+    await interaction.reply({
+      content: timeframe === 'daily'
+        ? 'No pomodoro cycles completed today yet. Start one with `/pomodoro start`!'
+        : 'No pomodoro cycles completed yet. Start one with `/pomodoro start`!',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const entries = cycles.map((row, index) => {
+    const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+    const hours = Math.floor(row.totalMinutes / 60);
+    const mins = row.totalMinutes % 60;
+    const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+    return `${medal} <@${row.userDiscordId}> — **${row.cycleCount}** cycles (${timeStr})`;
+  });
+
+  const title = timeframe === 'daily'
+    ? `${interaction.guild.name} — Today's Pomodoro Leaderboard`
+    : `${interaction.guild.name} — All-Time Pomodoro Leaderboard`;
+
+  const embed = new EmbedBuilder()
+    .setColor(0x57f287)
+    .setTitle(title)
+    .setDescription(entries.join('\n'))
+    .setTimestamp();
+
+  await interaction.reply({ embeds: [embed] });
+}
+
 function scheduleTimer(session, client) {
   const timerKey = `${session.guildId}_${session.channelId}`;
   const timeUntilEnd = new Date(session.endsAt) - new Date();
@@ -730,6 +804,19 @@ async function completeTimer(session, client) {
 
   currentSession.isActive = false;
   await currentSession.save();
+
+  // Log a completed cycle for each participant
+  const participants = currentSession.participants;
+  if (participants.length > 0) {
+    await PomodoroCycle.bulkCreate(
+      participants.map(userId => ({
+        userDiscordId: userId,
+        guildId: currentSession.guildId,
+        duration: currentSession.duration,
+        sessionId: currentSession.id,
+      }))
+    );
+  }
 
   // Play TTS notification if in voice channel
   if (currentSession.voiceChannelId && getConnection(currentSession.guildId)) {
