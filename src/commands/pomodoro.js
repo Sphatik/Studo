@@ -22,7 +22,7 @@ const activeTimers = new Map();
 // In-memory storage for break timers
 const breakTimers = new Map();
 
-// Helper to create join/leave buttons for active timers
+// Helper to create join/leave/skip-to-break buttons for active timers
 function createActiveTimerButtons(sessionId) {
   const joinButton = new ButtonBuilder()
     .setCustomId(`pomodoro-join_${sessionId}`)
@@ -34,7 +34,12 @@ function createActiveTimerButtons(sessionId) {
     .setLabel('Leave')
     .setStyle(ButtonStyle.Danger);
 
-  return new ActionRowBuilder().addComponents(joinButton, leaveButton);
+  const skipToBreakButton = new ButtonBuilder()
+    .setCustomId(`pomodoro-skiptobreak_${sessionId}`)
+    .setLabel('Skip to Break')
+    .setStyle(ButtonStyle.Secondary);
+
+  return new ActionRowBuilder().addComponents(joinButton, leaveButton, skipToBreakButton);
 }
 
 export const data = new SlashCommandBuilder()
@@ -215,6 +220,76 @@ export async function handleButtonInteraction(interaction, client) {
     return true;
   }
 
+  if (action === 'pomodoro-skiptobreak') {
+    const session = await PomodoroSession.findByPk(parseInt(sessionId));
+    if (!session || !session.isActive) {
+      await interaction.reply({
+        content: 'This pomodoro session is no longer active.',
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    // Acknowledge the interaction immediately to avoid timeout
+    await interaction.deferUpdate();
+
+    // Clear the scheduled timer
+    const timerKey = `${session.guildId}_${session.channelId}`;
+    const timerId = activeTimers.get(timerKey);
+    if (timerId) {
+      clearTimeout(timerId);
+      activeTimers.delete(timerKey);
+    }
+
+    session.isActive = false;
+    await session.save();
+
+    // No cycle is logged — skipping to break does not count as a completed cycle
+
+    // Play TTS if in voice, then leave
+    if (session.voiceChannelId && getConnection(session.guildId)) {
+      try {
+        await playPomodoroComplete(session.guildId);
+      } catch (err) {
+        console.error('TTS error:', err);
+      }
+      leaveVC(session.guildId);
+    }
+
+    const participantMentions = session.participants.map(id => `<@${id}>`).join(', ') || 'None';
+
+    const embed = new EmbedBuilder()
+      .setColor(0x57f287)
+      .setTitle('Pomodoro Skipped!')
+      .setDescription(
+        `Session skipped to break. Time for a ${session.breakDuration} minute break!`
+      )
+      .addFields(
+        { name: 'Participants', value: participantMentions }
+      )
+      .setTimestamp();
+
+    const breakButton = new ButtonBuilder()
+      .setCustomId(`pomodoro-break_${session.id}`)
+      .setLabel(`Start ${session.breakDuration}min Break`)
+      .setStyle(ButtonStyle.Primary);
+
+    const repeatButton = new ButtonBuilder()
+      .setCustomId(`pomodoro-repeat_${session.id}`)
+      .setLabel('Skip Break & Start Another')
+      .setStyle(ButtonStyle.Success);
+
+    const dismissButton = new ButtonBuilder()
+      .setCustomId(`pomodoro-dismiss_${session.id}`)
+      .setLabel('Dismiss')
+      .setStyle(ButtonStyle.Secondary);
+
+    const row = new ActionRowBuilder().addComponents(breakButton, repeatButton, dismissButton);
+
+    await interaction.editReply({ embeds: [embed], components: [row] });
+    return true;
+  }
+
   if (action === 'pomodoro-break') {
     const session = await PomodoroSession.findByPk(parseInt(sessionId));
     if (!session) {
@@ -320,9 +395,16 @@ export async function handleButtonInteraction(interaction, client) {
 
     scheduleTimer(newSession, client);
 
-    // Play TTS if in voice
-    if (session.voiceChannelId && getConnection(session.guildId)) {
-      playPomodoroStart(session.guildId).catch(err => console.error('TTS error:', err));
+    // Rejoin voice and play TTS if session had a voice channel
+    if (session.voiceChannelId) {
+      try {
+        const voiceChannel = await client.channels.fetch(session.voiceChannelId);
+        if (voiceChannel) await joinVC(voiceChannel);
+        playPomodoroStart(session.guildId).catch(err => console.error('TTS error:', err));
+        leaveVC();
+      } catch (err) {
+        console.error('Failed to rejoin voice channel:', err);
+      }
     }
 
     const participantMentions = session.participants.map(id => `<@${id}>`).join(', ');
@@ -404,9 +486,16 @@ export async function handleButtonInteraction(interaction, client) {
     // Schedule the timer
     scheduleTimer(newSession, client);
 
-    // Play TTS if in voice
-    if (session.voiceChannelId && getConnection(session.guildId)) {
-      playPomodoroStart(session.guildId).catch(err => console.error('TTS error:', err));
+    // Rejoin voice and play TTS if session had a voice channel
+    if (session.voiceChannelId) {
+      try {
+        const voiceChannel = await client.channels.fetch(session.voiceChannelId);
+        if (voiceChannel) await joinVC(voiceChannel);
+        playPomodoroStart(session.guildId).catch(err => console.error('TTS error:', err));
+        leaveVC();
+      } catch (err) {
+        console.error('Failed to rejoin voice channel:', err);
+      }
     }
 
     const participantMentions = session.participants.map(id => `<@${id}>`).join(', ');
@@ -465,7 +554,7 @@ async function handleStart(interaction) {
     });
     return;
   }
-
+  
   // Join voice channel if specified
   let voiceChannelId = null;
   if (voiceChannel) {
@@ -500,9 +589,11 @@ async function handleStart(interaction) {
   // Schedule the timer completion
   scheduleTimer(session, interaction.client);
 
-  // Play TTS announcement if in voice
+  // Play TTS announcement if in voice, then leave after it finishes
   if (voiceChannelId) {
-    playPomodoroStart(guildId).catch(err => console.error('TTS error:', err));
+    playPomodoroStart(guildId)
+      .catch(err => console.error('TTS error:', err))
+      .finally(() => leaveVC(guildId));
   }
 
   const fields = [
@@ -818,9 +909,18 @@ async function completeTimer(session, client) {
     );
   }
 
-  // Play TTS notification if in voice channel
-  if (currentSession.voiceChannelId && getConnection(currentSession.guildId)) {
-    playPomodoroComplete(currentSession.guildId).catch(err => console.error('TTS error:', err));
+  // Rejoin voice channel if needed, play TTS notification, then leave
+  if (currentSession.voiceChannelId) {
+    try {
+      if (!getConnection(currentSession.guildId)) {
+        const voiceChannel = await client.channels.fetch(currentSession.voiceChannelId);
+        if (voiceChannel) await joinVC(voiceChannel);
+      }
+      await playPomodoroComplete(currentSession.guildId);
+    } catch (err) {
+      console.error('TTS error:', err);
+    }
+    leaveVC(currentSession.guildId);
   }
 
   try {
@@ -885,9 +985,18 @@ async function completeBreak(session, client) {
       return; // Don't send break end message if a new pomodoro is already running
     }
 
-    // Play TTS notification if in voice channel
-    if (session.voiceChannelId && getConnection(session.guildId)) {
-      playBreakComplete(session.guildId).catch(err => console.error('TTS error:', err));
+    // Rejoin voice channel if needed, play TTS notification, then leave
+    if (session.voiceChannelId) {
+      try {
+        if (!getConnection(session.guildId)) {
+          const voiceChannel = await client.channels.fetch(session.voiceChannelId);
+          if (voiceChannel) await joinVC(voiceChannel);
+        }
+        await playBreakComplete(session.guildId);
+      } catch (err) {
+        console.error('TTS error:', err);
+      }
+      leaveVC(session.guildId);
     }
 
     const participantMentions = session.participants.map(id => `<@${id}>`).join(' ');
