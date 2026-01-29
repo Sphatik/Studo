@@ -54,5 +54,9 @@ export default function definePomodoroSession(sequelize) {
       allowNull: false,
       defaultValue: true,
     },
+    voiceChannelId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
   });
 }

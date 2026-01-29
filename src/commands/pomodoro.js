@@ -4,8 +4,17 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ChannelType,
 } from 'discord.js';
 import { PomodoroSession } from '../database/index.js';
+import {
+  joinVC,
+  leaveVC,
+  getConnection,
+  playPomodoroComplete,
+  playBreakComplete,
+  playPomodoroStart,
+} from '../utils/voice.js';
 
 // In-memory storage for active timers (maps channelId to timeout ID)
 const activeTimers = new Map();
@@ -49,6 +58,13 @@ export const data = new SlashCommandBuilder()
           .setRequired(false)
           .setMinValue(1)
           .setMaxValue(30)
+      )
+      .addChannelOption(option =>
+        option
+          .setName('voice')
+          .setDescription('Voice channel to join for audio notifications')
+          .setRequired(false)
+          .addChannelTypes(ChannelType.GuildVoice)
       )
   )
   .addSubcommand(subcommand =>
@@ -280,22 +296,33 @@ export async function handleButtonInteraction(interaction, client) {
       startedAt: now,
       endsAt: endsAt,
       isActive: true,
+      voiceChannelId: session.voiceChannelId,
     });
 
     scheduleTimer(newSession, client);
 
+    // Play TTS if in voice
+    if (session.voiceChannelId && getConnection(session.guildId)) {
+      playPomodoroStart(session.guildId).catch(err => console.error('TTS error:', err));
+    }
+
     const participantMentions = session.participants.map(id => `<@${id}>`).join(', ');
+
+    const fields = [
+      { name: 'Duration', value: `${session.duration} minutes`, inline: true },
+      { name: 'Break', value: `${session.breakDuration} minutes`, inline: true },
+      { name: 'Ends At', value: `<t:${Math.floor(endsAt.getTime() / 1000)}:T>`, inline: true },
+      { name: 'Participants', value: participantMentions || 'None yet' },
+    ];
+    if (session.voiceChannelId) {
+      fields.push({ name: 'Voice Channel', value: `<#${session.voiceChannelId}>`, inline: true });
+    }
 
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
       .setTitle('Pomodoro Timer Started!')
       .setDescription(`Break skipped! A new ${session.duration} minute pomodoro has started!`)
-      .addFields(
-        { name: 'Duration', value: `${session.duration} minutes`, inline: true },
-        { name: 'Break', value: `${session.breakDuration} minutes`, inline: true },
-        { name: 'Ends At', value: `<t:${Math.floor(endsAt.getTime() / 1000)}:T>`, inline: true },
-        { name: 'Participants', value: participantMentions || 'None yet' }
-      )
+      .addFields(fields)
       .setFooter({ text: `Started by ${interaction.user.username}` })
       .setTimestamp();
 
@@ -352,23 +379,34 @@ export async function handleButtonInteraction(interaction, client) {
       startedAt: now,
       endsAt: endsAt,
       isActive: true,
+      voiceChannelId: session.voiceChannelId,
     });
 
     // Schedule the timer
     scheduleTimer(newSession, client);
 
+    // Play TTS if in voice
+    if (session.voiceChannelId && getConnection(session.guildId)) {
+      playPomodoroStart(session.guildId).catch(err => console.error('TTS error:', err));
+    }
+
     const participantMentions = session.participants.map(id => `<@${id}>`).join(', ');
+
+    const fields = [
+      { name: 'Duration', value: `${session.duration} minutes`, inline: true },
+      { name: 'Break', value: `${session.breakDuration} minutes`, inline: true },
+      { name: 'Ends At', value: `<t:${Math.floor(endsAt.getTime() / 1000)}:T>`, inline: true },
+      { name: 'Participants', value: participantMentions || 'None yet' },
+    ];
+    if (session.voiceChannelId) {
+      fields.push({ name: 'Voice Channel', value: `<#${session.voiceChannelId}>`, inline: true });
+    }
 
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
       .setTitle('Pomodoro Timer Started!')
       .setDescription(`A new ${session.duration} minute pomodoro has started! Click **Join** to participate!`)
-      .addFields(
-        { name: 'Duration', value: `${session.duration} minutes`, inline: true },
-        { name: 'Break', value: `${session.breakDuration} minutes`, inline: true },
-        { name: 'Ends At', value: `<t:${Math.floor(endsAt.getTime() / 1000)}:T>`, inline: true },
-        { name: 'Participants', value: participantMentions || 'None yet' }
-      )
+      .addFields(fields)
       .setFooter({ text: `Started by ${interaction.user.username}` })
       .setTimestamp();
 
@@ -388,6 +426,7 @@ export async function handleButtonInteraction(interaction, client) {
 async function handleStart(interaction) {
   const duration = interaction.options.getInteger('duration') || 25;
   const breakDuration = interaction.options.getInteger('break') || 5;
+  const voiceChannel = interaction.options.getChannel('voice');
   const channelId = interaction.channel.id;
   const guildId = interaction.guild.id;
 
@@ -408,6 +447,21 @@ async function handleStart(interaction) {
     return;
   }
 
+  // Join voice channel if specified
+  let voiceChannelId = null;
+  if (voiceChannel) {
+    try {
+      await joinVC(voiceChannel);
+      voiceChannelId = voiceChannel.id;
+    } catch (error) {
+      console.error('Failed to join voice channel:', error);
+      await interaction.reply({
+        content: 'Failed to join the voice channel. Starting timer without voice notifications.',
+        ephemeral: true,
+      });
+    }
+  }
+
   const now = new Date();
   const endsAt = new Date(now.getTime() + duration * 60 * 1000);
 
@@ -421,10 +475,27 @@ async function handleStart(interaction) {
     startedAt: now,
     endsAt: endsAt,
     isActive: true,
+    voiceChannelId,
   });
 
   // Schedule the timer completion
   scheduleTimer(session, interaction.client);
+
+  // Play TTS announcement if in voice
+  if (voiceChannelId) {
+    playPomodoroStart(guildId).catch(err => console.error('TTS error:', err));
+  }
+
+  const fields = [
+    { name: 'Duration', value: `${duration} minutes`, inline: true },
+    { name: 'Break', value: `${breakDuration} minutes`, inline: true },
+    { name: 'Ends At', value: `<t:${Math.floor(endsAt.getTime() / 1000)}:T>`, inline: true },
+    { name: 'Participants', value: `<@${interaction.user.id}>` },
+  ];
+
+  if (voiceChannelId) {
+    fields.push({ name: 'Voice Channel', value: `<#${voiceChannelId}>`, inline: true });
+  }
 
   const embed = new EmbedBuilder()
     .setColor(0x57f287)
@@ -432,12 +503,7 @@ async function handleStart(interaction) {
     .setDescription(
       `A ${duration} minute pomodoro session has started. Click **Join** to participate!`
     )
-    .addFields(
-      { name: 'Duration', value: `${duration} minutes`, inline: true },
-      { name: 'Break', value: `${breakDuration} minutes`, inline: true },
-      { name: 'Ends At', value: `<t:${Math.floor(endsAt.getTime() / 1000)}:T>`, inline: true },
-      { name: 'Participants', value: `<@${interaction.user.id}>` }
-    )
+    .addFields(fields)
     .setFooter({ text: `Started by ${interaction.user.username}` })
     .setTimestamp();
 
@@ -619,6 +685,11 @@ async function handleStop(interaction) {
     activeTimers.delete(timerKey);
   }
 
+  // Leave voice channel if connected
+  if (session.voiceChannelId) {
+    leaveVC(session.guildId);
+  }
+
   session.isActive = false;
   await session.save();
 
@@ -659,6 +730,11 @@ async function completeTimer(session, client) {
 
   currentSession.isActive = false;
   await currentSession.save();
+
+  // Play TTS notification if in voice channel
+  if (currentSession.voiceChannelId && getConnection(currentSession.guildId)) {
+    playPomodoroComplete(currentSession.guildId).catch(err => console.error('TTS error:', err));
+  }
 
   try {
     const channel = await client.channels.fetch(currentSession.channelId);
@@ -720,6 +796,11 @@ async function completeBreak(session, client) {
 
     if (existingSession) {
       return; // Don't send break end message if a new pomodoro is already running
+    }
+
+    // Play TTS notification if in voice channel
+    if (session.voiceChannelId && getConnection(session.guildId)) {
+      playBreakComplete(session.guildId).catch(err => console.error('TTS error:', err));
     }
 
     const participantMentions = session.participants.map(id => `<@${id}>`).join(' ');
