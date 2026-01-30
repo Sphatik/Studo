@@ -20,6 +20,37 @@ export function slugToTitle(slug) {
 }
 
 /**
+ * Verifies that a LeetCode problem slug corresponds to a real problem.
+ * Uses LeetCode's public GraphQL API.
+ * @param {string} slug - e.g., "two-sum"
+ * @returns {Promise<boolean>} - true if the problem exists
+ */
+export async function verifyLeetCodeProblem(slug) {
+  try {
+    const response = await fetch('https://leetcode.com/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: `query getQuestionDetail($titleSlug: String!) {
+          question(titleSlug: $titleSlug) {
+            titleSlug
+          }
+        }`,
+        variables: { titleSlug: slug },
+      }),
+    });
+
+    if (!response.ok) return false;
+
+    const data = await response.json();
+    return data?.data?.question != null;
+  } catch {
+    // If the API is unreachable, allow the submission through
+    return true;
+  }
+}
+
+/**
  * Extracts LeetCode problems from message content.
  * @param {string} content - Message text
  * @returns {Array<{url: string, slug: string, title: string}>}

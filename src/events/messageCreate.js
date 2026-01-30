@@ -1,5 +1,5 @@
 import { User, Submission, ServerConfig } from '../database/index.js';
-import { extractLeetCodeProblems } from '../utils/leetcode.js';
+import { extractLeetCodeProblems, verifyLeetCodeProblem } from '../utils/leetcode.js';
 
 /**
  * Handles incoming messages to detect and track LeetCode problem links.
@@ -52,6 +52,10 @@ export async function handleMessageCreate(message) {
       const hoursSince = (Date.now() - recentSubmission.createdAt.getTime()) / (1000 * 60 * 60);
       if (hoursSince < 24) continue;
     }
+
+    // Verify the problem actually exists on LeetCode
+    const isValid = await verifyLeetCodeProblem(problem.slug);
+    if (!isValid) continue;
 
     // Create submission record
     const submission = await Submission.create({
