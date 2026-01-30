@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } from 'discord.js';
 import { Op } from 'sequelize';
 import { User, Submission, ServerConfig } from '../database/index.js';
+import { verifyLeetCodeProblem } from '../utils/leetcode.js';
 
 export const data = new SlashCommandBuilder()
   .setName('leetcode')
@@ -36,6 +37,11 @@ export const data = new SlashCommandBuilder()
     subcommand
       .setName('today')
       .setDescription('View who solved problems today')
+  )
+  .addSubcommand(subcommand =>
+    subcommand
+      .setName('purge')
+      .setDescription('Remove submissions with invalid LeetCode links (Admin only)')
   );
 
 export async function execute(interaction) {
@@ -53,6 +59,9 @@ export async function execute(interaction) {
       break;
     case 'today':
       await handleToday(interaction);
+      break;
+    case 'purge':
+      await handlePurge(interaction);
       break;
   }
 }
@@ -215,6 +224,82 @@ async function handleToday(interaction) {
     .setTimestamp();
 
   await interaction.reply({ embeds: [embed] });
+}
+
+async function handlePurge(interaction) {
+  if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({
+      content: 'You need Administrator permissions to use this command.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.deferReply();
+
+  const submissions = await Submission.findAll({
+    where: { guildId: interaction.guild.id },
+  });
+
+  if (submissions.length === 0) {
+    await interaction.editReply('No submissions to check.');
+    return;
+  }
+
+  // Get unique slugs to minimize API calls
+  const slugs = [...new Set(submissions.map(s => s.problemSlug))];
+  const invalidSlugs = new Set();
+
+  for (const slug of slugs) {
+    const isValid = await verifyLeetCodeProblem(slug);
+    if (!isValid) {
+      invalidSlugs.add(slug);
+    }
+  }
+
+  if (invalidSlugs.size === 0) {
+    await interaction.editReply('All submissions are valid. No fake links found.');
+    return;
+  }
+
+  // Find all submissions with invalid slugs
+  const invalidSubmissions = submissions.filter(s => invalidSlugs.has(s.problemSlug));
+
+  // Group removed count per user to fix totalSolved
+  const removedPerUser = new Map();
+  for (const sub of invalidSubmissions) {
+    removedPerUser.set(sub.userDiscordId, (removedPerUser.get(sub.userDiscordId) || 0) + 1);
+  }
+
+  // Delete invalid submissions
+  await Submission.destroy({
+    where: {
+      guildId: interaction.guild.id,
+      problemSlug: { [Op.in]: [...invalidSlugs] },
+    },
+  });
+
+  // Adjust totalSolved for affected users
+  for (const [discordId, count] of removedPerUser) {
+    const user = await User.findByPk(discordId);
+    if (user) {
+      user.totalSolved = Math.max(0, user.totalSolved - count);
+      await user.save();
+    }
+  }
+
+  const slugList = [...invalidSlugs].map(s => `\`${s}\``).join(', ');
+  const embed = new EmbedBuilder()
+    .setColor(0xff0000)
+    .setTitle('Purge Complete')
+    .addFields(
+      { name: 'Invalid Problems', value: slugList },
+      { name: 'Submissions Removed', value: invalidSubmissions.length.toString(), inline: true },
+      { name: 'Users Affected', value: removedPerUser.size.toString(), inline: true },
+    )
+    .setTimestamp();
+
+  await interaction.editReply({ embeds: [embed] });
 }
 
 /**
