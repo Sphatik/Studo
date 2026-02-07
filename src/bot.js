@@ -8,6 +8,9 @@ import {
   handleButtonInteraction as pomodoroButtonHandler,
   restoreTimers as restorePomodoroTimers,
 } from './commands/pomodoro.js';
+import {
+  execute as pomodoro2Execute
+} from './commands/pomodoro/pomodoro.js';
 import { handleMessageCreate } from './events/messageCreate.js';
 import { handleVoiceStateUpdate } from './events/voiceStateUpdate.js';
 import { startScheduler } from './scheduler.js';
@@ -51,6 +54,8 @@ client.on(Events.InteractionCreate, async interaction => {
     await logExecute(interaction);
   } else if (interaction.commandName === 'pomodoro') {
     await pomodoroExecute(interaction);
+  } else if (interaction.commandName === 'pomodoro2') {
+    await pomodoro2Execute(interaction);
   }
 });
 
