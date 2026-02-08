@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } from 'discord.js';
 import { Op } from 'sequelize';
-import { User, Submission, ServerConfig } from '../database/index.js';
+import { User, Submission, ServerConfig } from '../database/index.ts';
 import { verifyLeetCodeProblem } from '../utils/leetcode.js';
 
 export const data = new SlashCommandBuilder()

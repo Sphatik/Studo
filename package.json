@@ -2,7 +2,9 @@
   "type": "module",
   "scripts": {
     "register": "node src/register.js",
-    "bot": "node src/bot.js",
+    "bot": "tsx src/bot.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "start": "pm2 start ecosystem.config.cjs",
     "stop": "pm2 stop studo-bot",
     "restart": "pm2 restart studo-bot",
@@ -25,5 +27,10 @@
     "sodium-native": "^5.0.10",
     "sqlite3": "^5.1.7",
     "zlib-sync": "^0.1.10"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   }
 }
