@@ -2,7 +2,8 @@ module.exports = {
   apps: [
     {
       name: 'studo-bot',
-      script: './src/bot.js',
+      script: './node_modules/.bin/tsx',
+      args: './src/bot.ts',
       instances: 1,
       autorestart: true,
       watch: false,
@@ -14,10 +15,8 @@ module.exports = {
       out_file: './logs/out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
-      // Restart on crash
       min_uptime: '10s',
       max_restarts: 10,
-      // Exponential backoff restart delay
       exp_backoff_restart_delay: 100,
     },
   ],

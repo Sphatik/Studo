@@ -1,10 +1,14 @@
+import tseslint from '@typescript-eslint/eslint-plugin';
+import tsparser from '@typescript-eslint/parser';
+
 export default [
   {
-    ignores: ['node_modules/**', 'package-lock.json'],
+    ignores: ['node_modules/**', 'package-lock.json', 'dist/**'],
   },
   {
-    files: ['**/*.js'],
+    files: ['**/*.js', '**/*.ts'],
     languageOptions: {
+      parser: tsparser,
       ecmaVersion: 'latest',
       sourceType: 'module',
       globals: {
@@ -24,6 +28,9 @@ export default [
         setImmediate: 'readonly',
         clearImmediate: 'readonly',
       },
+    },
+    plugins: {
+      '@typescript-eslint': tseslint,
     },
     rules: {
       'arrow-spacing': ['warn', { before: true, after: true }],
@@ -64,6 +71,10 @@ export default [
       'space-unary-ops': 'error',
       'spaced-comment': 'error',
       yoda: 'error',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
     },
   },
 ];

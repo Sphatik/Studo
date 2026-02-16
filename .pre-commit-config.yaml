@@ -19,8 +19,7 @@ repos:
         name: eslint
         entry: npx eslint --fix
         language: system
-        types: [javascript]
-        files: \.js$
+        files: \.(js|ts)$
         exclude: ^node_modules/
         pass_filenames: true
 
@@ -29,4 +28,5 @@ repos:
         entry: npx prettier --write --ignore-unknown
         language: node
         types_or: [javascript, json, yaml, markdown]
+        files: \.(js|ts|json|ya?ml|md)$
         exclude: ^(node_modules/|package-lock\.json)

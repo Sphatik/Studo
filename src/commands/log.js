@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } from 'discord.js';
 import { Op } from 'sequelize';
-import { User, StudyLog, VoiceSession, ServerConfig } from '../database/index.js';
+import { User, StudyLog, VoiceSession, ServerConfig } from '../database/index.ts';
 
 export const data = new SlashCommandBuilder()
   .setName('log')

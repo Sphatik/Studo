@@ -1,12 +1,12 @@
 import { Sequelize } from 'sequelize';
 import BetterSqlite3 from 'better-sqlite3';
-import defineUser from './models/User.js';
-import defineSubmission from './models/Submission.js';
-import defineServerConfig from './models/ServerConfig.js';
-import defineStudyLog from './models/StudyLog.js';
-import defineVoiceSession from './models/VoiceSession.js';
-import definePomodoroSession from './models/PomodoroSession.js';
-import definePomodoroCycle from './models/PomodoroCycle.js';
+import defineUser, { User } from './models/User.js';
+import defineSubmission, { Submission } from './models/Submission.js';
+import defineServerConfig, { ServerConfig } from './models/ServerConfig.js';
+import defineStudyLog, { StudyLog } from './models/StudyLog.js';
+import defineVoiceSession, { VoiceSession } from './models/VoiceSession.js';
+import definePomodoroSession, { PomodoroSession } from './models/PomodoroSession.js';
+import definePomodoroCycle, { PomodoroCycle } from './models/PomodoroCycle.js';
 
 const sequelize = new Sequelize({
   dialect: 'sqlite',
@@ -16,13 +16,13 @@ const sequelize = new Sequelize({
 });
 
 // Initialize models
-const User = defineUser(sequelize);
-const Submission = defineSubmission(sequelize);
-const ServerConfig = defineServerConfig(sequelize);
-const StudyLog = defineStudyLog(sequelize);
-const VoiceSession = defineVoiceSession(sequelize);
-const PomodoroSession = definePomodoroSession(sequelize);
-const PomodoroCycle = definePomodoroCycle(sequelize);
+defineUser(sequelize);
+defineSubmission(sequelize);
+defineServerConfig(sequelize);
+defineStudyLog(sequelize);
+defineVoiceSession(sequelize);
+definePomodoroSession(sequelize);
+definePomodoroCycle(sequelize);
 
 // Define associations
 User.hasMany(Submission, { foreignKey: 'userDiscordId', sourceKey: 'discordId' });

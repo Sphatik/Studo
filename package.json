@@ -2,7 +2,9 @@
   "type": "module",
   "scripts": {
     "register": "node src/register.js",
-    "bot": "node src/bot.js",
+    "bot": "tsx src/bot.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "start": "pm2 start ecosystem.config.cjs",
     "stop": "pm2 stop studo-bot",
     "restart": "pm2 restart studo-bot",
@@ -29,8 +31,14 @@
     "zlib-sync": "^0.1.10"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^25.2.1",
+    "@typescript-eslint/eslint-plugin": "^8.22.1",
+    "@typescript-eslint/parser": "^8.22.1",
     "eslint": "^9.18.0",
-    "prettier": "^3.4.2"
+    "prettier": "^3.4.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   },
   "overrides": {
     "undici": "^6.23.0"

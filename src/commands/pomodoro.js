@@ -7,7 +7,7 @@ import {
   ChannelType,
 } from 'discord.js';
 import { Op } from 'sequelize';
-import { PomodoroSession, PomodoroCycle } from '../database/index.js';
+import { PomodoroSession, PomodoroCycle } from '../database/index.ts';
 import {
   joinVC,
   leaveVC,
@@ -307,7 +307,6 @@ export async function handleButtonInteraction(interaction, client) {
 
     const breakDuration = session.breakDuration || 5;
     const endsAt = new Date(Date.now() + breakDuration * 60 * 1000);
-
     const endsAtTimestamp = Math.floor(endsAt.getTime() / 1000);
 
     const embed = new EmbedBuilder()
