@@ -1,0 +1,21 @@
+{
+  // Configuration for markdownlint-cli2
+  "config": {
+    // Disable line length restriction for notes
+    "MD013": false,
+    // Allow inline HTML (useful for tables and formatting in notes)
+    "MD033": false,
+    // Allow hard tabs
+    "MD010": false,
+    // Allow duplicate headings (common in notes with repeated sections)
+    "MD024": false,
+    // Allow blank lines inside blockquotes
+    "MD028": false,
+    // Allow non-descriptive link text (e.g., "click here")
+    "MD059": false,
+    // Allow first line to not be a heading (for centered divs, badges, etc.)
+    "MD041": false,
+    // Keep other rules enabled for better markdown quality
+    "default": true,
+  },
+}

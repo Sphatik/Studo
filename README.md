@@ -4,6 +4,7 @@
 
 [![Node.js](https://img.shields.io/badge/Node.js-24.9.0-ffb86c?logo=node.js&logoColor=white&labelColor=6272a4)](https://nodejs.org/)
 [![Discord.js](https://img.shields.io/badge/Discord.js-14.25.1-ff79c6?logo=discord&logoColor=white&labelColor=6272a4)](https://discord.js.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9.3-3178c6?logo=typescript&logoColor=white&labelColor=6272a4)](https://www.typescriptlang.org/)
 [![pre-commit](https://img.shields.io/badge/pre--commit-4.5.1-50fa7b?logo=pre-commit&logoColor=282a36&labelColor=6272a4)](https://github.com/pre-commit/pre-commit)
 [![ESLint](https://img.shields.io/badge/ESLint-9.18.0-8be9fd?logo=eslint&logoColor=white&labelColor=6272a4)](https://eslint.org/)
 [![Prettier](https://img.shields.io/badge/Prettier-3.4.2-f1fa8c?logo=prettier&logoColor=282a36&labelColor=6272a4)](https://prettier.io/)
@@ -80,6 +81,8 @@ npm run deploy      # Deploy to VPS
 
 ```bash
 npm run dev-setup      # Run full development environment setup
+npm run build          # Build TypeScript to JavaScript
+npm run typecheck      # Run TypeScript type checking
 npm run lint           # Run ESLint on src/
 npm run lint:fix       # Run ESLint and auto-fix issues
 npm run format         # Format all files with Prettier
@@ -93,8 +96,9 @@ The following checks run automatically on every commit:
 
 ### Code Quality
 
-- **ESLint** - JavaScript linting and code quality checks
+- **ESLint** - JavaScript and TypeScript linting and code quality checks
 - **Prettier** - Automatic code formatting
+- **markdownlint** - Markdown file linting and consistency checks
 
 ### Security
 
@@ -112,14 +116,15 @@ The following checks run automatically on every commit:
 
 ## Configuration Files
 
-| File                      | Purpose                           |
-| ------------------------- | --------------------------------- |
-| `.pre-commit-config.yaml` | Pre-commit hook configuration     |
-| `.eslintrc.json`          | ESLint rules for JavaScript       |
-| `.prettierrc.json`        | Prettier code formatting rules    |
-| `.prettierignore`         | Files to exclude from formatting  |
-| `.env.example`            | Example environment variables     |
-| `ecosystem.config.cjs`    | PM2 process manager configuration |
+| File                       | Purpose                           |
+| -------------------------- | --------------------------------- |
+| `.pre-commit-config.yaml`  | Pre-commit hook configuration     |
+| `eslint.config.js`         | ESLint rules for JS/TS            |
+| `prettier.config.js`       | Prettier code formatting rules    |
+| `.markdownlint-cli2.jsonc` | Markdownlint configuration        |
+| `tsconfig.json`            | TypeScript compiler configuration |
+| `.env.example`             | Example environment variables     |
+| `ecosystem.config.cjs`     | PM2 process manager configuration |
 
 ## Deployment
 

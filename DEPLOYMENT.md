@@ -31,7 +31,7 @@ nano .env
 
 Add your environment variables (never commit this file!):
 
-```
+```env
 DISCORD_TOKEN=your_token_here
 CLIENT_ID=your_client_id_here
 # Add any other secrets
