@@ -7,7 +7,7 @@ import {
   entersState,
   getVoiceConnection,
 } from '@discordjs/voice';
-import googleTTS from 'google-tts-api';
+import googleTTS from '@sefinek/google-tts-api';
 import { Readable } from 'stream';
 import https from 'https';
 

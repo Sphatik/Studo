@@ -1,4 +1,5 @@
 import { Sequelize } from 'sequelize';
+import BetterSqlite3 from 'better-sqlite3';
 import defineUser from './models/User.js';
 import defineSubmission from './models/Submission.js';
 import defineServerConfig from './models/ServerConfig.js';
@@ -11,6 +12,7 @@ const sequelize = new Sequelize({
   dialect: 'sqlite',
   storage: 'database.sqlite',
   logging: false,
+  dialectModule: BetterSqlite3,
 });
 
 // Initialize models
