@@ -69,9 +69,7 @@ async function handleLeaveStudyChannel(userId, guildId) {
 
   if (session) {
     session.leftAt = new Date();
-    session.durationMinutes = Math.floor(
-      (session.leftAt - session.joinedAt) / 60000
-    );
+    session.durationMinutes = Math.floor((session.leftAt - session.joinedAt) / 60000);
     await session.save();
   }
 }

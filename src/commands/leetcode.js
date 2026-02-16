@@ -18,9 +18,7 @@ export const data = new SlashCommandBuilder()
       )
   )
   .addSubcommand(subcommand =>
-    subcommand
-      .setName('leaderboard')
-      .setDescription('View the server leaderboard')
+    subcommand.setName('leaderboard').setDescription('View the server leaderboard')
   )
   .addSubcommand(subcommand =>
     subcommand
@@ -34,9 +32,7 @@ export const data = new SlashCommandBuilder()
       )
   )
   .addSubcommand(subcommand =>
-    subcommand
-      .setName('today')
-      .setDescription('View who solved problems today')
+    subcommand.setName('today').setDescription('View who solved problems today')
   )
   .addSubcommand(subcommand =>
     subcommand
@@ -218,9 +214,11 @@ async function handleToday(interaction) {
 
   const embed = new EmbedBuilder()
     .setColor(0xffa116)
-    .setTitle(`Today's LeetCode Activity`)
+    .setTitle("Today's LeetCode Activity")
     .setDescription(entries.join('\n\n'))
-    .setFooter({ text: `${submissions.length} problem(s) solved by ${userSubmissions.size} member(s)` })
+    .setFooter({
+      text: `${submissions.length} problem(s) solved by ${userSubmissions.size} member(s)`,
+    })
     .setTimestamp();
 
   await interaction.reply({ embeds: [embed] });
@@ -295,7 +293,7 @@ async function handlePurge(interaction) {
     .addFields(
       { name: 'Invalid Problems', value: slugList },
       { name: 'Submissions Removed', value: invalidSubmissions.length.toString(), inline: true },
-      { name: 'Users Affected', value: removedPerUser.size.toString(), inline: true },
+      { name: 'Users Affected', value: removedPerUser.size.toString(), inline: true }
     )
     .setTimestamp();
 
@@ -348,8 +346,10 @@ export async function generateDailySummaryEmbed(guildId) {
 
   return new EmbedBuilder()
     .setColor(0xffa116)
-    .setTitle(`Yesterday's LeetCode Summary`)
+    .setTitle("Yesterday's LeetCode Summary")
     .setDescription(entries.join('\n\n'))
-    .setFooter({ text: `${submissions.length} problem(s) solved by ${userSubmissions.size} member(s)` })
+    .setFooter({
+      text: `${submissions.length} problem(s) solved by ${userSubmissions.size} member(s)`,
+    })
     .setTimestamp();
 }

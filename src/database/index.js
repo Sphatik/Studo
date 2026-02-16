@@ -32,4 +32,13 @@ StudyLog.belongsTo(User, { foreignKey: 'userDiscordId', targetKey: 'discordId' }
 User.hasMany(VoiceSession, { foreignKey: 'userDiscordId', sourceKey: 'discordId' });
 VoiceSession.belongsTo(User, { foreignKey: 'userDiscordId', targetKey: 'discordId' });
 
-export { sequelize, User, Submission, ServerConfig, StudyLog, VoiceSession, PomodoroSession, PomodoroCycle };
+export {
+  sequelize,
+  User,
+  Submission,
+  ServerConfig,
+  StudyLog,
+  VoiceSession,
+  PomodoroSession,
+  PomodoroCycle,
+};

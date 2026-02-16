@@ -94,12 +94,9 @@ export const data = new SlashCommandBuilder()
           .setName('timeframe')
           .setDescription('Leaderboard timeframe (default: all-time)')
           .setRequired(false)
-          .addChoices(
-            { name: 'All Time', value: 'alltime' },
-            { name: 'Today', value: 'daily' }
-          )
+          .addChoices({ name: 'All Time', value: 'alltime' }, { name: 'Today', value: 'daily' })
       )
-  )
+  );
 
 export async function execute(interaction) {
   const subcommand = interaction.options.getSubcommand();
@@ -162,7 +159,9 @@ export async function handleButtonInteraction(interaction, client) {
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
       .setTitle('Pomodoro Timer')
-      .setDescription(`${interaction.user} joined! A ${session.duration} minute session is in progress.\nEnds <t:${endsAtTimestamp}:R>`)
+      .setDescription(
+        `${interaction.user} joined! A ${session.duration} minute session is in progress.\nEnds <t:${endsAtTimestamp}:R>`
+      )
       .addFields(
         { name: 'Duration', value: `${session.duration} minutes`, inline: true },
         { name: 'Break', value: `${session.breakDuration} minutes`, inline: true },
@@ -261,12 +260,8 @@ export async function handleButtonInteraction(interaction, client) {
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
       .setTitle('Pomodoro Skipped!')
-      .setDescription(
-        `Session skipped to break. Time for a ${session.breakDuration} minute break!`
-      )
-      .addFields(
-        { name: 'Participants', value: participantMentions }
-      )
+      .setDescription(`Session skipped to break. Time for a ${session.breakDuration} minute break!`)
+      .addFields({ name: 'Participants', value: participantMentions })
       .setTimestamp();
 
     const breakButton = new ButtonBuilder()
@@ -318,10 +313,13 @@ export async function handleButtonInteraction(interaction, client) {
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
       .setTitle('Break Time!')
-      .setDescription(`Taking a ${breakDuration} minute break. You'll be pinged when it's time to start another pomodoro!\nEnds <t:${endsAtTimestamp}:R>`)
-      .addFields(
-        { name: 'Participants', value: session.participants.map(id => `<@${id}>`).join(', ') || 'None' }
+      .setDescription(
+        `Taking a ${breakDuration} minute break. You'll be pinged when it's time to start another pomodoro!\nEnds <t:${endsAtTimestamp}:R>`
       )
+      .addFields({
+        name: 'Participants',
+        value: session.participants.map(id => `<@${id}>`).join(', ') || 'None',
+      })
       .setTimestamp();
 
     const skipBreakButton = new ButtonBuilder()
@@ -334,10 +332,13 @@ export async function handleButtonInteraction(interaction, client) {
     await interaction.update({ embeds: [embed], components: [row] });
 
     // Schedule break completion
-    const timerId = setTimeout(async () => {
-      breakTimers.delete(breakKey);
-      await completeBreak(session, client);
-    }, breakDuration * 60 * 1000);
+    const timerId = setTimeout(
+      async () => {
+        breakTimers.delete(breakKey);
+        await completeBreak(session, client);
+      },
+      breakDuration * 60 * 1000
+    );
 
     breakTimers.set(breakKey, { timerId, sessionId: session.id });
     return true;
@@ -424,7 +425,9 @@ export async function handleButtonInteraction(interaction, client) {
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
       .setTitle('Pomodoro Timer Started!')
-      .setDescription(`Break skipped! A new ${session.duration} minute pomodoro has started!\nEnds <t:${endsAtTimestamp}:R>`)
+      .setDescription(
+        `Break skipped! A new ${session.duration} minute pomodoro has started!\nEnds <t:${endsAtTimestamp}:R>`
+      )
       .addFields(fields)
       .setFooter({ text: `Started by ${interaction.user.username}` })
       .setTimestamp();
@@ -517,7 +520,9 @@ export async function handleButtonInteraction(interaction, client) {
     const embed = new EmbedBuilder()
       .setColor(0x57f287)
       .setTitle('Pomodoro Timer Started!')
-      .setDescription(`A new ${session.duration} minute pomodoro has started! Click **Join** to participate!\nEnds <t:${endsAtTimestamp}:R>`)
+      .setDescription(
+        `A new ${session.duration} minute pomodoro has started! Click **Join** to participate!\nEnds <t:${endsAtTimestamp}:R>`
+      )
       .addFields(fields)
       .setFooter({ text: `Started by ${interaction.user.username}` })
       .setTimestamp();
@@ -558,7 +563,7 @@ async function handleStart(interaction) {
     });
     return;
   }
-  
+
   // Join voice channel if specified
   let voiceChannelId = null;
   if (voiceChannel) {
@@ -639,8 +644,7 @@ async function handleJoin(interaction) {
 
   if (!session) {
     await interaction.reply({
-      content:
-        'No active pomodoro timer in this channel. Start one with `/pomodoro start`!',
+      content: 'No active pomodoro timer in this channel. Start one with `/pomodoro start`!',
       ephemeral: true,
     });
     return;
@@ -666,10 +670,10 @@ async function handleJoin(interaction) {
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle('Joined Pomodoro Session!')
-    .setDescription(`${interaction.user} has joined the pomodoro session!\nEnds <t:${endsAtTimestamp}:R>`)
-    .addFields(
-      { name: 'Participants', value: participantMentions }
+    .setDescription(
+      `${interaction.user} has joined the pomodoro session!\nEnds <t:${endsAtTimestamp}:R>`
     )
+    .addFields({ name: 'Participants', value: participantMentions })
     .setTimestamp();
 
   await interaction.reply({ embeds: [embed] });
@@ -725,8 +729,7 @@ async function handleStatus(interaction) {
 
   if (!session) {
     await interaction.reply({
-      content:
-        'No active pomodoro timer in this channel. Start one with `/pomodoro start`!',
+      content: 'No active pomodoro timer in this channel. Start one with `/pomodoro start`!',
       ephemeral: true,
     });
     return;
@@ -830,9 +833,10 @@ async function handleLeaderboard(interaction) {
 
   if (cycles.length === 0) {
     await interaction.reply({
-      content: timeframe === 'daily'
-        ? 'No pomodoro cycles completed today yet. Start one with `/pomodoro start`!'
-        : 'No pomodoro cycles completed yet. Start one with `/pomodoro start`!',
+      content:
+        timeframe === 'daily'
+          ? 'No pomodoro cycles completed today yet. Start one with `/pomodoro start`!'
+          : 'No pomodoro cycles completed yet. Start one with `/pomodoro start`!',
       ephemeral: true,
     });
     return;
@@ -846,9 +850,10 @@ async function handleLeaderboard(interaction) {
     return `${medal} <@${row.userDiscordId}> — **${row.cycleCount}** cycles (${timeStr})`;
   });
 
-  const title = timeframe === 'daily'
-    ? `${interaction.guild.name} — Today's Pomodoro Leaderboard`
-    : `${interaction.guild.name} — All-Time Pomodoro Leaderboard`;
+  const title =
+    timeframe === 'daily'
+      ? `${interaction.guild.name} — Today's Pomodoro Leaderboard`
+      : `${interaction.guild.name} — All-Time Pomodoro Leaderboard`;
 
   const embed = new EmbedBuilder()
     .setColor(0x57f287)
@@ -996,7 +1001,9 @@ async function completeBreak(session, client) {
     const embed = new EmbedBuilder()
       .setColor(0xfee75c)
       .setTitle('Break Over!')
-      .setDescription(`Your ${session.breakDuration} minute break is complete. Ready for another pomodoro?`)
+      .setDescription(
+        `Your ${session.breakDuration} minute break is complete. Ready for another pomodoro?`
+      )
       .addFields({
         name: 'Participants',
         value: session.participants.map(id => `<@${id}>`).join(', ') || 'None',

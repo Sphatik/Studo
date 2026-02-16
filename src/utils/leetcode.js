@@ -5,7 +5,8 @@
  *   - https://www.leetcode.com/problems/two-sum/description/
  *   - leetcode.com/problems/add-two-numbers
  */
-const LEETCODE_PROBLEM_REGEX = /(?:https?:\/\/)?(?:www\.)?leetcode\.com\/problems\/([a-z0-9-]+)\/?(?:[a-z]*\/?)?/gi;
+const LEETCODE_PROBLEM_REGEX =
+  /(?:https?:\/\/)?(?:www\.)?leetcode\.com\/problems\/([a-z0-9-]+)\/?(?:[a-z]*\/?)?/gi;
 
 /**
  * Converts a problem slug to a readable title.

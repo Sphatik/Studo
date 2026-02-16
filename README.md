@@ -55,6 +55,7 @@ npm run dev-setup
 ```
 
 This single command will:
+
 - ✅ Check/install pre-commit framework
 - ✅ Install all npm dependencies (ESLint, Prettier)
 - ✅ Install Git hooks
@@ -91,14 +92,16 @@ npm run precommit      # Manually run all pre-commit hooks
 The following checks run automatically on every commit:
 
 ### Code Quality
+
 - **ESLint** - JavaScript linting and code quality checks
 - **Prettier** - Automatic code formatting
 
 ### Security
-- **detect-secrets** - Prevents committing secrets and credentials
+
 - **detect-private-key** - Blocks private SSH/API keys
 
 ### File Integrity
+
 - **trailing-whitespace** - Removes trailing whitespace
 - **end-of-file-fixer** - Ensures files end with newline
 - **check-yaml** - Validates YAML syntax
@@ -109,18 +112,19 @@ The following checks run automatically on every commit:
 
 ## Configuration Files
 
-| File                        | Purpose                                     |
-| --------------------------- | ------------------------------------------- |
-| `.pre-commit-config.yaml`   | Pre-commit hook configuration               |
-| `.eslintrc.json`            | ESLint rules for JavaScript                 |
-| `.prettierrc.json`          | Prettier code formatting rules              |
-| `.prettierignore`           | Files to exclude from formatting            |
-| `.env.example`              | Example environment variables               |
-| `ecosystem.config.cjs`      | PM2 process manager configuration           |
+| File                      | Purpose                           |
+| ------------------------- | --------------------------------- |
+| `.pre-commit-config.yaml` | Pre-commit hook configuration     |
+| `.eslintrc.json`          | ESLint rules for JavaScript       |
+| `.prettierrc.json`        | Prettier code formatting rules    |
+| `.prettierignore`         | Files to exclude from formatting  |
+| `.env.example`            | Example environment variables     |
+| `ecosystem.config.cjs`    | PM2 process manager configuration |
 
 ## Deployment
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions including:
+
 - VPS setup with PM2
 - GitHub Actions automatic deployment
 - SSH configuration

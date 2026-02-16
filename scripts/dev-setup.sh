@@ -84,19 +84,19 @@ main() {
 
   # Step 1: Check Node.js and npm
   print_header "1. Checking Node.js Environment"
-  
+
   if ! command_exists node; then
     print_error "Node.js is not installed"
     echo -e "   Please install Node.js from https://nodejs.org/"
     exit 1
   fi
-  
+
   if ! command_exists npm; then
     print_error "npm is not installed"
     echo -e "   Please install npm"
     exit 1
   fi
-  
+
   NODE_VERSION=$(node --version)
   NPM_VERSION=$(npm --version)
   print_success "Node.js ${BOLD}$NODE_VERSION${RESET} installed"
@@ -105,22 +105,22 @@ main() {
 
   # Step 2: Check/Install pre-commit
   print_header "2. Setting up pre-commit Framework"
-  
+
   if command_exists pre-commit; then
     PRECOMMIT_VERSION=$(pre-commit --version | awk '{print $2}')
     print_success "pre-commit ${BOLD}$PRECOMMIT_VERSION${RESET} already installed"
   else
     print_warning "pre-commit not found, attempting to install..."
-    
+
     # Try to install via pip/pip3
     if command_exists pip3; then
       print_step "Installing pre-commit via pip3..."
       if pip3 install pre-commit --user; then
         print_success "pre-commit installed successfully via pip3"
-        
+
         # Add user bin to PATH if needed
         export PATH="$HOME/.local/bin:$PATH"
-        
+
         if command_exists pre-commit; then
           PRECOMMIT_VERSION=$(pre-commit --version | awk '{print $2}')
           print_success "pre-commit ${BOLD}$PRECOMMIT_VERSION${RESET} is now available"
@@ -132,10 +132,10 @@ main() {
       print_step "Installing pre-commit via pip..."
       if pip install pre-commit --user; then
         print_success "pre-commit installed successfully via pip"
-        
+
         # Add user bin to PATH if needed
         export PATH="$HOME/.local/bin:$PATH"
-        
+
         if command_exists pre-commit; then
           PRECOMMIT_VERSION=$(pre-commit --version | awk '{print $2}')
           print_success "pre-commit ${BOLD}$PRECOMMIT_VERSION${RESET} is now available"
@@ -161,7 +161,7 @@ main() {
       echo -e "  Then run this script again: ${CYAN}npm run dev-setup${RESET}"
       exit 1
     fi
-    
+
     if ! command_exists pre-commit; then
       print_error "pre-commit installation failed or not in PATH"
       echo ""
@@ -177,7 +177,7 @@ main() {
 
   # Step 3: Install npm dependencies
   print_header "3. Installing npm Dependencies"
-  
+
   print_step "Installing ESLint and Prettier..."
   if npm install; then
     print_success "npm dependencies installed successfully"
@@ -189,13 +189,13 @@ main() {
 
   # Step 4: Install pre-commit hooks
   print_header "4. Installing Git Hooks"
-  
+
   if [ ! -d ".git" ]; then
     print_error "Not a git repository"
     echo -e "   Initialize git first: ${CYAN}git init${RESET}"
     exit 1
   fi
-  
+
   print_step "Installing pre-commit hooks into .git/hooks/..."
   if pre-commit install; then
     print_success "Git hooks installed successfully"
@@ -203,7 +203,7 @@ main() {
     print_error "Failed to install pre-commit hooks"
     exit 1
   fi
-  
+
   # Initialize secrets baseline if it doesn't exist
   if [ ! -f ".secrets.baseline" ]; then
     print_step "Creating secrets baseline..."
@@ -217,35 +217,35 @@ main() {
 
   # Step 5: Validate setup
   print_header "5. Validating Setup"
-  
+
   print_step "Running hook validation..."
-  
+
   # Check if hooks are installed
   if [ -f ".git/hooks/pre-commit" ]; then
     print_success "pre-commit hook installed in .git/hooks/"
   else
     print_error "pre-commit hook file not found"
   fi
-  
+
   # Check configuration
   if [ -f ".pre-commit-config.yaml" ]; then
     print_success "pre-commit configuration found"
   else
     print_error "pre-commit configuration missing"
   fi
-  
+
   if [ -f ".eslintrc.json" ]; then
     print_success "ESLint configuration found"
   else
     print_error "ESLint configuration missing"
   fi
-  
+
   if [ -f ".prettierrc.json" ]; then
     print_success "Prettier configuration found"
   else
     print_error "Prettier configuration missing"
   fi
-  
+
   echo ""
   print_step "Testing pre-commit hooks..."
   if pre-commit run --all-files > /dev/null 2>&1; then
@@ -258,16 +258,16 @@ main() {
 
   # Final summary
   print_header "Setup Complete!"
-  
+
   echo -e "${GREEN}${BOLD}${CHECK_MARK} Development environment is ready!${RESET}\n"
-  
+
   echo -e "${BOLD}Installed Components:${RESET}"
   echo -e "  ${SHIELD} pre-commit framework"
   echo -e "  ${PACKAGE} ESLint (JavaScript linting)"
   echo -e "  ${PACKAGE} Prettier (code formatting)"
   echo -e "  ${HOOK} Git hooks (automatic checks on commit)"
   echo ""
-  
+
   echo -e "${BOLD}Available Commands:${RESET}"
   echo -e "  ${CYAN}npm run lint${RESET}          - Run ESLint on src/"
   echo -e "  ${CYAN}npm run lint:fix${RESET}      - Run ESLint and fix issues"
@@ -275,7 +275,7 @@ main() {
   echo -e "  ${CYAN}npm run format:check${RESET}  - Check formatting without changes"
   echo -e "  ${CYAN}npm run precommit${RESET}     - Manually run all pre-commit hooks"
   echo ""
-  
+
   echo -e "${BOLD}What Happens on Commit:${RESET}"
   echo -e "  ${ARROW} Trailing whitespace removal"
   echo -e "  ${ARROW} End-of-file fixes"
@@ -286,7 +286,7 @@ main() {
   echo -e "  ${ARROW} ESLint checks"
   echo -e "  ${ARROW} Prettier formatting"
   echo ""
-  
+
   echo -e "${GREEN}${BOLD}You're all set! Happy coding! ${ROCKET}${RESET}\n"
 }
 
