@@ -1,4 +1,11 @@
-import { DataTypes, Sequelize, Model, InferAttributes, InferCreationAttributes, CreationOptional } from 'sequelize';
+import {
+  DataTypes,
+  Sequelize,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from 'sequelize';
 
 export interface UserAttributes {
   discordId: string;
@@ -13,23 +20,26 @@ export class User extends Model<InferAttributes<User>, InferCreationAttributes<U
 }
 
 export default function defineUser(sequelize: Sequelize): typeof User {
-  User.init({
-    discordId: {
-      type: DataTypes.STRING,
-      primaryKey: true,
-      allowNull: false,
+  User.init(
+    {
+      discordId: {
+        type: DataTypes.STRING,
+        primaryKey: true,
+        allowNull: false,
+      },
+      username: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      totalSolved: {
+        type: DataTypes.INTEGER,
+        defaultValue: 0,
+      },
     },
-    username: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    totalSolved: {
-      type: DataTypes.INTEGER,
-      defaultValue: 0,
-    },
-  }, {
-    sequelize,
-    modelName: 'User',
-  });
+    {
+      sequelize,
+      modelName: 'User',
+    }
+  );
   return User;
 }

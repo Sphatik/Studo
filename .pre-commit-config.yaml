@@ -1,0 +1,37 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+      - id: detect-private-key
+
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.21.0
+    hooks:
+      - id: markdownlint-cli2
+
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint
+        entry: npx eslint --fix
+        language: system
+        files: \.(js|ts)$
+        exclude: ^node_modules/
+        pass_filenames: true
+
+      - id: prettier
+        name: prettier
+        entry: npx prettier --write --ignore-unknown
+        language: node
+        types_or: [javascript, json, yaml, markdown]
+        files: \.(js|ts|json|ya?ml|md)$
+        exclude: ^(node_modules/|package-lock\.json)

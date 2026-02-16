@@ -1,4 +1,11 @@
-import { DataTypes, Sequelize, Model, InferAttributes, InferCreationAttributes, CreationOptional } from 'sequelize';
+import {
+  DataTypes,
+  Sequelize,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from 'sequelize';
 
 export interface VoiceSessionAttributes {
   id: number;
@@ -10,7 +17,10 @@ export interface VoiceSessionAttributes {
   durationMinutes: number | null;
 }
 
-export class VoiceSession extends Model<InferAttributes<VoiceSession>, InferCreationAttributes<VoiceSession>> {
+export class VoiceSession extends Model<
+  InferAttributes<VoiceSession>,
+  InferCreationAttributes<VoiceSession>
+> {
   declare id: CreationOptional<number>;
   declare userDiscordId: string;
   declare guildId: string;
@@ -21,39 +31,42 @@ export class VoiceSession extends Model<InferAttributes<VoiceSession>, InferCrea
 }
 
 export default function defineVoiceSession(sequelize: Sequelize): typeof VoiceSession {
-  VoiceSession.init({
-    id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
-      primaryKey: true,
+  VoiceSession.init(
+    {
+      id: {
+        type: DataTypes.INTEGER,
+        autoIncrement: true,
+        primaryKey: true,
+      },
+      userDiscordId: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      guildId: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      channelId: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      joinedAt: {
+        type: DataTypes.DATE,
+        allowNull: false,
+      },
+      leftAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      durationMinutes: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
     },
-    userDiscordId: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    guildId: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    channelId: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    joinedAt: {
-      type: DataTypes.DATE,
-      allowNull: false,
-    },
-    leftAt: {
-      type: DataTypes.DATE,
-      allowNull: true,
-    },
-    durationMinutes: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-    },
-  }, {
-    sequelize,
-    modelName: 'VoiceSession',
-  });
+    {
+      sequelize,
+      modelName: 'VoiceSession',
+    }
+  );
   return VoiceSession;
 }

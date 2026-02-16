@@ -1,4 +1,11 @@
-import { DataTypes, Sequelize, Model, InferAttributes, InferCreationAttributes, CreationOptional } from 'sequelize';
+import {
+  DataTypes,
+  Sequelize,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from 'sequelize';
 
 export interface PomodoroSessionAttributes {
   id: number;
@@ -14,7 +21,10 @@ export interface PomodoroSessionAttributes {
   voiceChannelId: string | null;
 }
 
-export class PomodoroSession extends Model<InferAttributes<PomodoroSession>, InferCreationAttributes<PomodoroSession>> {
+export class PomodoroSession extends Model<
+  InferAttributes<PomodoroSession>,
+  InferCreationAttributes<PomodoroSession>
+> {
   declare id: CreationOptional<number>;
   declare guildId: string;
   declare channelId: string;
@@ -29,66 +39,69 @@ export class PomodoroSession extends Model<InferAttributes<PomodoroSession>, Inf
 }
 
 export default function definePomodoroSession(sequelize: Sequelize): typeof PomodoroSession {
-  PomodoroSession.init({
-    id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
-      primaryKey: true,
-    },
-    guildId: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    channelId: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    creatorId: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    participants: {
-      type: DataTypes.TEXT,
-      allowNull: false,
-      defaultValue: '[]',
-      get() {
-        const value = this.getDataValue('participants') as unknown as string;
-        return value ? JSON.parse(value) : [];
+  PomodoroSession.init(
+    {
+      id: {
+        type: DataTypes.INTEGER,
+        autoIncrement: true,
+        primaryKey: true,
       },
-      set(value: string[]) {
-        this.setDataValue('participants', JSON.stringify(value) as unknown as string[]);
+      guildId: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      channelId: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      creatorId: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      participants: {
+        type: DataTypes.TEXT,
+        allowNull: false,
+        defaultValue: '[]',
+        get() {
+          const value = this.getDataValue('participants') as unknown as string;
+          return value ? JSON.parse(value) : [];
+        },
+        set(value: string[]) {
+          this.setDataValue('participants', JSON.stringify(value) as unknown as string[]);
+        },
+      },
+      duration: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 25,
+      },
+      breakDuration: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 5,
+      },
+      startedAt: {
+        type: DataTypes.DATE,
+        allowNull: false,
+      },
+      endsAt: {
+        type: DataTypes.DATE,
+        allowNull: false,
+      },
+      isActive: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
+      },
+      voiceChannelId: {
+        type: DataTypes.STRING,
+        allowNull: true,
       },
     },
-    duration: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      defaultValue: 25,
-    },
-    breakDuration: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      defaultValue: 5,
-    },
-    startedAt: {
-      type: DataTypes.DATE,
-      allowNull: false,
-    },
-    endsAt: {
-      type: DataTypes.DATE,
-      allowNull: false,
-    },
-    isActive: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: true,
-    },
-    voiceChannelId: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-  }, {
-    sequelize,
-    modelName: 'PomodoroSession',
-  });
+    {
+      sequelize,
+      modelName: 'PomodoroSession',
+    }
+  );
   return PomodoroSession;
 }

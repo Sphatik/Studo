@@ -30,7 +30,8 @@ nano .env
 ```
 
 Add your environment variables (never commit this file!):
-```
+
+```env
 DISCORD_TOKEN=your_token_here
 CLIENT_ID=your_client_id_here
 # Add any other secrets
@@ -155,16 +156,19 @@ npm run deploy     # Run deployment script
 ## Troubleshooting
 
 ### Bot won't start
+
 - Check logs: `pm2 logs studo-bot --err`
 - Check if environment variables are set: `pm2 env 0`
 - Make sure `.env` file exists on VPS
 
 ### GitHub Actions deployment fails
+
 - Check that all secrets are set correctly
 - Verify SSH access: `ssh -i /path/to/key username@host`
 - Check the Actions tab for detailed error messages
 
 ### Bot doesn't restart after VPS reboot
+
 - Make sure you ran `pm2 startup` and `pm2 save`
 - Check: `systemctl status pm2-<username>`
 

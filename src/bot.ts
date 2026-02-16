@@ -5,12 +5,12 @@ import { execute as leetcodeExecute } from './commands/leetcode.js';
 import { execute as logExecute } from './commands/log.js';
 import {
   execute as pomodoroExecute,
-  handleButtonInteraction as pomodoroButtonHandler,
+  handleButtonInteraction as _pomodoroButtonHandler,
   restoreTimers as restorePomodoroTimers,
 } from './commands/pomodoro.js';
 import {
   execute as pomodoro2Execute,
-  handleButtonInteraction as pomodoro2ButtonHandler
+  handleButtonInteraction as pomodoro2ButtonHandler,
 } from './commands/pomodoro/pomodoro.js';
 import { handleMessageCreate } from './events/messageCreate.js';
 import { handleVoiceStateUpdate } from './events/voiceStateUpdate.js';
@@ -25,7 +25,7 @@ const client = new Client({
   ],
 });
 
-client.on(Events.ClientReady, async (readyClient) => {
+client.on(Events.ClientReady, async readyClient => {
   console.log(`Logged in as ${readyClient.user.tag}!`);
 
   // Disable foreign key checks during sync to avoid SQLite constraints

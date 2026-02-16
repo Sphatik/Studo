@@ -7,7 +7,10 @@ export interface ServerConfigAttributes {
   studySummaryChannelId: string | null;
 }
 
-export class ServerConfig extends Model<InferAttributes<ServerConfig>, InferCreationAttributes<ServerConfig>> {
+export class ServerConfig extends Model<
+  InferAttributes<ServerConfig>,
+  InferCreationAttributes<ServerConfig>
+> {
   declare guildId: string;
   declare trackingChannelId: string | null;
   declare studyCategoryId: string | null;
@@ -15,27 +18,30 @@ export class ServerConfig extends Model<InferAttributes<ServerConfig>, InferCrea
 }
 
 export default function defineServerConfig(sequelize: Sequelize): typeof ServerConfig {
-  ServerConfig.init({
-    guildId: {
-      type: DataTypes.STRING,
-      primaryKey: true,
-      allowNull: false,
+  ServerConfig.init(
+    {
+      guildId: {
+        type: DataTypes.STRING,
+        primaryKey: true,
+        allowNull: false,
+      },
+      trackingChannelId: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      studyCategoryId: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      studySummaryChannelId: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
     },
-    trackingChannelId: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    studyCategoryId: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-    studySummaryChannelId: {
-      type: DataTypes.STRING,
-      allowNull: true,
-    },
-  }, {
-    sequelize,
-    modelName: 'ServerConfig',
-  });
+    {
+      sequelize,
+      modelName: 'ServerConfig',
+    }
+  );
   return ServerConfig;
 }
