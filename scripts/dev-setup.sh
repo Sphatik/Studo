@@ -18,12 +18,8 @@ RESET='\033[0m'
 # Unicode symbols
 CHECK_MARK="✓"
 CROSS_MARK="✗"
-ARROW="→"
+ARROW="-"
 GEAR="⚙"
-ROCKET="🚀"
-PACKAGE="📦"
-HOOK="🪝"
-SHIELD="🛡"
 
 print_header() {
   echo -e "\n${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
@@ -40,7 +36,7 @@ print_error() {
 }
 
 print_warning() {
-  echo -e "${YELLOW}⚠${RESET}  $1"
+  echo -e "${YELLOW}!${RESET}  $1"
 }
 
 print_info() {
@@ -74,7 +70,7 @@ command_exists() {
 # Main setup function
 main() {
   clear
-  echo -e "${BOLD}${ROCKET}  ${MAGENTA}Studo Bot - Development Setup${RESET}"
+  echo -e "${BOLD}${MAGENTA}Studo Bot - Development Setup${RESET}"
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
   echo ""
 
@@ -203,16 +199,6 @@ main() {
     print_error "Failed to install pre-commit hooks"
     exit 1
   fi
-
-  # Initialize secrets baseline if it doesn't exist
-  if [ ! -f ".secrets.baseline" ]; then
-    print_step "Creating secrets baseline..."
-    if detect-secrets scan --baseline .secrets.baseline > /dev/null 2>&1; then
-      print_success "Secrets baseline created"
-    else
-      print_warning "Could not create secrets baseline (will be created on first commit)"
-    fi
-  fi
   echo ""
 
   # Step 5: Validate setup
@@ -262,10 +248,10 @@ main() {
   echo -e "${GREEN}${BOLD}${CHECK_MARK} Development environment is ready!${RESET}\n"
 
   echo -e "${BOLD}Installed Components:${RESET}"
-  echo -e "  ${SHIELD} pre-commit framework"
-  echo -e "  ${PACKAGE} ESLint (JavaScript linting)"
-  echo -e "  ${PACKAGE} Prettier (code formatting)"
-  echo -e "  ${HOOK} Git hooks (automatic checks on commit)"
+  echo -e "  - pre-commit framework"
+  echo -e "  - ESLint (JavaScript linting)"
+  echo -e "  - Prettier (code formatting)"
+  echo -e "  - Git hooks (automatic checks on commit)"
   echo ""
 
   echo -e "${BOLD}Available Commands:${RESET}"
@@ -287,7 +273,7 @@ main() {
   echo -e "  ${ARROW} Prettier formatting"
   echo ""
 
-  echo -e "${GREEN}${BOLD}You're all set! Happy coding! ${ROCKET}${RESET}\n"
+  echo -e "${GREEN}${BOLD}You're all set! Happy coding!${RESET}\n"
 }
 
 # Run main function
