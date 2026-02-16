@@ -1,0 +1,13 @@
+node_modules/
+package-lock.json
+.git/
+.env
+*.log
+logs/
+.pm2/
+*.sqlite
+build/
+dist/
+coverage/
+.vscode/
+.cursor/
