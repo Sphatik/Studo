@@ -5,6 +5,7 @@ export interface ServerConfigAttributes {
   trackingChannelId: string | null;
   studyCategoryId: string | null;
   studySummaryChannelId: string | null;
+  pomodoroChannelId: string | null;
 }
 
 export class ServerConfig extends Model<InferAttributes<ServerConfig>, InferCreationAttributes<ServerConfig>> {
@@ -12,6 +13,7 @@ export class ServerConfig extends Model<InferAttributes<ServerConfig>, InferCrea
   declare trackingChannelId: string | null;
   declare studyCategoryId: string | null;
   declare studySummaryChannelId: string | null;
+  declare pomodoroChannelId: string | null;
 }
 
 export default function defineServerConfig(sequelize: Sequelize): typeof ServerConfig {
@@ -30,6 +32,10 @@ export default function defineServerConfig(sequelize: Sequelize): typeof ServerC
       allowNull: true,
     },
     studySummaryChannelId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    pomodoroChannelId: {
       type: DataTypes.STRING,
       allowNull: true,
     },
