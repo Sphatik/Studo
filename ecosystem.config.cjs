@@ -1,7 +1,8 @@
 module.exports = {
   apps: [{
     name: 'studo-bot',
-    script: './src/bot.js',
+    script: 'npm',
+    args: 'run bot',
     instances: 1,
     autorestart: true,
     watch: false,
