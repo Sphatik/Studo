@@ -1,6 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import { User, VoiceSession, ServerConfig, PomodoroSession } from '../database/index.js';
 import { Cooldown } from '../utils/cooldown.js';
+import { joinPromptMessages } from '../commands/pomodoro/pomodoro.js';
 
 // Per-user cooldown: 2 minutes between pomodoro join prompts
 const pomodoroPromptCooldown = new Cooldown(2 * 60 * 1000);
@@ -124,7 +125,8 @@ async function handlePomodoroJoinPrompt(newState, userId, guildId, voiceChannel,
       .setStyle(ButtonStyle.Success);
 
     const row = new ActionRowBuilder().addComponents(joinButton);
-    await textChannel.send({ content: `<@${userId}>`, embeds: [embed], components: [row] });
+    const promptMsg = await textChannel.send({ content: `<@${userId}>`, embeds: [embed], components: [row] });
+    joinPromptMessages.set(`${pomodoroSession.id}_${userId}`, promptMsg);
   } catch (err) {
     console.error('[Pomodoro] Failed to send join prompt:', err);
   }

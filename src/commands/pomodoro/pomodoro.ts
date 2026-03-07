@@ -35,6 +35,10 @@ export interface IPomodoroSpeaker {
 export const activeTimers = new Map<string, NodeJS.Timeout>();
 /** @internal exposed for testing */
 export const breakTimers = new Map<string, NodeJS.Timeout>();
+/** Maps session ID to the start message, so join interactions can update it */
+export const sessionMessages = new Map<number, import('discord.js').Message>();
+/** Maps `${sessionId}_${userId}` to the VC join prompt message, so it can be deleted when the user joins */
+export const joinPromptMessages = new Map<string, import('discord.js').Message>();
 
 function makeSpeaker(client: Client): IPomodoroSpeaker {
     async function speak(session: PomodoroSession | PomodoroSessionAttributes, text: string) {
@@ -278,7 +282,9 @@ async function handleStartCmd(interaction: ChatInputCommandInteraction): Promise
 
     if (voiceChannelId)
         pomodoroSpeaker.playStart(session);
-    await interaction.reply(embedTimerStatus(session, "Pomodoro Timer Started!", true));
+    const reply = await interaction.reply(embedTimerStatus(session, "Pomodoro Timer Started!", true));
+    const message = await reply.fetch();
+    sessionMessages.set(session.id, message);
 }
 
 async function handleJoinCmd(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -618,6 +624,7 @@ async function btnPomoEnd(interaction: ButtonInteraction, session: PomodoroSessi
         }
         session.isActive = false;
         await session.save();
+        sessionMessages.delete(session.id);
     }
 
     if (interaction.guildId) leaveVC(interaction.guildId);
@@ -726,10 +733,23 @@ async function handleJoin(session: PomodoroSession | null, interaction: ChatInpu
     session.participants = participants;
     await session.save();
 
-    const embed = embedUserJoined(session, interaction.user.displayName);
     if (interaction.isButton()) {
-        await interaction.update({ embeds: [embed], components: [] });
+        // Edit the VC join prompt message to confirm the user joined
+        const promptKey = `${session.id}_${interaction.user.id}`;
+        const promptMessage = joinPromptMessages.get(promptKey);
+        if (promptMessage) {
+            await promptMessage.edit({ content: `<@${interaction.user.id}> joined the pomodoro session!`, embeds: [], components: [] }).catch(() => {});
+            joinPromptMessages.delete(promptKey);
+        }
+
+        // Update the original start message with the new participant list
+        const startMessage = sessionMessages.get(session.id);
+        if (startMessage) {
+            await startMessage.edit(embedTimerStatus(session, "Pomodoro Timer Started!", true));
+        }
+        await interaction.deferUpdate();
     } else {
+        const embed = embedUserJoined(session, interaction.user.displayName);
         await interaction.reply({ embeds: [embed] });
     }
 }
@@ -764,6 +784,7 @@ async function handleLeave(session: PomodoroSession | null, interaction: ChatInp
         }
         session.isActive = false;
         await session.save();
+        sessionMessages.delete(session.id);
 
         const embed = new EmbedBuilder()
             .setColor(0xed4245)
@@ -883,6 +904,7 @@ export async function completeTimer(session: PomodoroSessionData, client: Client
 
     currentSession.isActive = false;
     await currentSession.save();
+    sessionMessages.delete(currentSession.id);
 
     // Log a completed cycle for each participant
     const participants = currentSession.participants;
