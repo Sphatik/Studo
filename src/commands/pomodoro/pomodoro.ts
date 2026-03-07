@@ -16,6 +16,7 @@ import {
     InteractionEditReplyOptions,
     InteractionUpdateOptions,
 } from 'discord.js';
+import { Op } from 'sequelize';
 import { PomodoroCycle, PomodoroSession } from '../../database/index.js';
 import { PomodoroSessionAttributes } from '../../database/models/PomodoroSession.js';
 import { speakTTSCached } from '../../utils/voice.js';
@@ -363,7 +364,58 @@ async function handleStop(interaction: ChatInputCommandInteraction): Promise<voi
 }
 
 async function handleLeaderboard(interaction: ChatInputCommandInteraction): Promise<void> {
-    // TODO: Implement leaderboard logic
+    const timeframe = interaction.options.getString('timeframe') || 'alltime';
+    const guildId = interaction.guild!.id;
+
+    const whereClause: Record<string, unknown> = { guildId };
+    if (timeframe === 'daily') {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        whereClause.createdAt = { [Op.gte]: today };
+    }
+
+    const cycles = await PomodoroCycle.findAll({
+        where: whereClause,
+        attributes: [
+            'userDiscordId',
+            [PomodoroCycle.sequelize!.fn('COUNT', PomodoroCycle.sequelize!.col('id')), 'cycleCount'],
+            [PomodoroCycle.sequelize!.fn('SUM', PomodoroCycle.sequelize!.col('duration')), 'totalMinutes'],
+        ],
+        group: ['userDiscordId'],
+        order: [[PomodoroCycle.sequelize!.literal('cycleCount'), 'DESC']],
+        limit: 10,
+        raw: true,
+    }) as unknown as { userDiscordId: string; cycleCount: number; totalMinutes: number }[];
+
+    if (cycles.length === 0) {
+        await interaction.reply({
+            content: timeframe === 'daily'
+                ? 'No pomodoro cycles completed today yet. Start one with `/pomodoro start`!'
+                : 'No pomodoro cycles completed yet. Start one with `/pomodoro start`!',
+            ephemeral: true,
+        });
+        return;
+    }
+
+    const entries = cycles.map((row, index) => {
+        const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+        const hours = Math.floor(row.totalMinutes / 60);
+        const mins = row.totalMinutes % 60;
+        const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+        return `${medal} <@${row.userDiscordId}> — **${row.cycleCount}** cycles (${timeStr})`;
+    });
+
+    const title = timeframe === 'daily'
+        ? `${interaction.guild!.name} — Today's Pomodoro Leaderboard`
+        : `${interaction.guild!.name} — All-Time Pomodoro Leaderboard`;
+
+    const embed = new EmbedBuilder()
+        .setColor(0x57f287)
+        .setTitle(title)
+        .setDescription(entries.join('\n'))
+        .setTimestamp();
+
+    await interaction.reply({ embeds: [embed] });
 }
 // #endregion Command Impl
 
