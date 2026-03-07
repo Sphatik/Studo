@@ -3,6 +3,7 @@ module.exports = {
     name: 'studo-bot',
     script: 'npm',
     args: 'run bot',
+    exec_mode: 'fork',
     instances: 1,
     autorestart: true,
     watch: false,
