@@ -33,5 +33,4 @@ jobs:
       - name: Cleanup workspace
         if: always()
         run: |
-          rm -rf node_modules
           rm -rf dist
