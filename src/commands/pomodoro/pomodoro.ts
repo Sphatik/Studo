@@ -31,8 +31,10 @@ export interface IPomodoroSpeaker {
     playBreakComplete: (session: PomodoroSession | PomodoroSessionAttributes) => void;
 }
 
-const activeTimers = new Map<string, NodeJS.Timeout>();
-const breakTimers = new Map<string, NodeJS.Timeout>();
+/** @internal exposed for testing */
+export const activeTimers = new Map<string, NodeJS.Timeout>();
+/** @internal exposed for testing */
+export const breakTimers = new Map<string, NodeJS.Timeout>();
 
 function makeSpeaker(client: Client): IPomodoroSpeaker {
     async function speak(session: PomodoroSession | PomodoroSessionAttributes, text: string) {
@@ -51,6 +53,8 @@ function makeSpeaker(client: Client): IPomodoroSpeaker {
         playBreakComplete: (s) => { speak(s, 'Break over. Ready for another pomodoro?'); },
     };
 }
+
+export function setPomodoroSpeaker(s: IPomodoroSpeaker) { pomodoroSpeaker = s; }
 
 var pomodoroSpeaker: IPomodoroSpeaker = {
     playStart() { console.log("NOT IMPL"); },
@@ -689,7 +693,7 @@ async function repeatPomoSession(session: PomodoroSession, interaction: ButtonIn
 // #endregion
 
 // #region Timers
-function scheduleTimer(session: PomodoroSessionData, client: Client): void {
+export function scheduleTimer(session: PomodoroSessionData, client: Client): void {
     const timerKey = `${session.guildId}_${session.channelId}`;
     const timeUntilEnd = new Date(session.endsAt).getTime() - new Date().getTime();
     if (timeUntilEnd <= 0) {
@@ -702,7 +706,7 @@ function scheduleTimer(session: PomodoroSessionData, client: Client): void {
     activeTimers.set(timerKey, timerId);
 }
 
-async function completeTimer(session: PomodoroSessionData, client: Client): Promise<void> {
+export async function completeTimer(session: PomodoroSessionData, client: Client): Promise<void> {
     const timerKey = `${session.guildId}_${session.channelId}`;
     activeTimers.delete(timerKey);
 
@@ -738,7 +742,7 @@ async function completeTimer(session: PomodoroSessionData, client: Client): Prom
     }
 }
 
-async function completeBreak(session: PomodoroSessionData, client: Client) {
+export async function completeBreak(session: PomodoroSessionData, client: Client) {
     try {
         const channel = await client.channels.fetch(session.channelId) as TextChannel;
         if (!channel) return;
@@ -768,7 +772,7 @@ async function completeBreak(session: PomodoroSessionData, client: Client) {
 
 // #region Embeds
 
-function embedTimerStatus(session: PomodoroSessionData, title: String, hasButtons: boolean = false) {
+export function embedTimerStatus(session: PomodoroSessionData, title: String, hasButtons: boolean = false) {
     const endsAtTimestamp = Math.floor(session.endsAt.getTime() / 1000);
     const participantMentions = session.participants.map(id => `<@${id}>`).join(', ');
 
@@ -795,7 +799,7 @@ function embedTimerStatus(session: PomodoroSessionData, title: String, hasButton
     const btns = _createStartTimerButtons(session);
     return { embeds: [embed], components: [btns] };
 }
-function embedUserJoined(session: PomodoroSession, user: string) {
+export function embedUserJoined(session: PomodoroSession, user: string) {
     const participants = session.participants;
     const endsAtTimestamp = Math.floor(new Date(session.endsAt).getTime() / 1000);
     const participantMentions = participants.map(id => `<@${id}>`).join(', ');
@@ -810,7 +814,7 @@ function embedUserJoined(session: PomodoroSession, user: string) {
     return embed;
 }
 
-function embedCompleteStartBreak(session: PomodoroSessionAttributes, title: string = "Pomodoro Complete!"): MessageCreateOptions {
+export function embedCompleteStartBreak(session: PomodoroSessionAttributes, title: string = "Pomodoro Complete!"): MessageCreateOptions {
     const participantMentions = session.participants.map(id => `<@${id}>`).join(' ');
     const embed = new EmbedBuilder()
         .setColor(0x57f287)
@@ -827,7 +831,7 @@ function embedCompleteStartBreak(session: PomodoroSessionAttributes, title: stri
     return { content: participantMentions, embeds: [embed], components: [row] };
 }
 
-function embedBreakActive(session: PomodoroSession) {
+export function embedBreakActive(session: PomodoroSession) {
     const breakDuration = session.breakDuration || 5;
     const endsAt = new Date(Date.now() + breakDuration * 60 * 1000);
     const endsAtTimestamp = Math.floor(endsAt.getTime() / 1000);
@@ -849,7 +853,7 @@ function embedBreakActive(session: PomodoroSession) {
     return { embeds: [embed], components: [row] };
 }
 
-function embedBreakOver(session: PomodoroSessionData) {
+export function embedBreakOver(session: PomodoroSessionData) {
     const participantMentions = session.participants.map(id => `<@${id}>`).join(' ');
     const embed = new EmbedBuilder()
         .setColor(0xfee75c)
@@ -879,7 +883,7 @@ function embedBreakOver(session: PomodoroSessionData) {
     }
 }
 
-function _createStartTimerButtons(session: PomodoroSessionData) {
+export function _createStartTimerButtons(session: PomodoroSessionData) {
     const sessionId = session.id;
     const joinButton = new ButtonBuilder()
         .setCustomId(`pomodoro-join_${sessionId}`)
@@ -899,7 +903,7 @@ function _createStartTimerButtons(session: PomodoroSessionData) {
     return new ActionRowBuilder<ButtonBuilder>().addComponents(joinButton, leaveButton, skipToBreakButton);
 }
 
-function _createCompleteStartBreakButtons(session: PomodoroSessionData) {
+export function _createCompleteStartBreakButtons(session: PomodoroSessionData) {
     const breakButton = new ButtonBuilder()
         .setCustomId(`pomodoro-break_${session.id}`)
         .setLabel(`Start ${session.breakDuration}min Break`)
