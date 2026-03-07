@@ -19,7 +19,7 @@ import {
 import { Op } from 'sequelize';
 import { PomodoroCycle, PomodoroSession } from '../../database/index.js';
 import { PomodoroSessionAttributes } from '../../database/models/PomodoroSession.js';
-import { speakTTSCached } from '../../utils/voice.js';
+import { speakTTSCached, leaveVC } from '../../utils/voice.js';
 import { VoiceChannel } from 'discord.js';
 
 type PomodoroSessionData = PomodoroSessionAttributes;
@@ -40,6 +40,7 @@ function makeSpeaker(client: Client): IPomodoroSpeaker {
     async function speak(session: PomodoroSession | PomodoroSessionAttributes, text: string) {
         if (!session.voiceChannelId) return;
         try {
+            console.debug("Saying: " + text);
             const ch = await client.channels.fetch(session.voiceChannelId);
             if (ch instanceof VoiceChannel) await speakTTSCached(ch, text);
         } catch (err) {
@@ -169,7 +170,7 @@ export async function handleButtonInteraction(interaction: ButtonInteraction, cl
 
     // Actions that dont require sessions
     if (action === 'pomodoro-end') {
-        return await btnPomoEnd(interaction);
+        return await btnPomoEnd(interaction, session);
     }
     // -----
 
@@ -214,7 +215,15 @@ async function handleStartCmd(interaction: ChatInputCommandInteraction): Promise
     const duration = interaction.options.getInteger('duration') || 25;
     const breakDuration = interaction.options.getInteger('break') || 5;
     const voiceChannel = interaction.options.getChannel('voice');
-    const voiceChannelId = voiceChannel ? voiceChannel.id : null;
+    let voiceChannelId = voiceChannel ? voiceChannel.id : null;
+
+    // Auto-join the voice channel the user is currently in (if no voice channel specified)
+    if (!voiceChannelId) {
+        const member = await interaction.guild?.members.fetch(interaction.user.id);
+        const userVoiceChannelId = member?.voice.channelId ?? null;
+        if (userVoiceChannelId) voiceChannelId = userVoiceChannelId;
+    }
+
     const channelId = interaction.channel!.id;
     const guildId = interaction.guild!.id;
 
@@ -452,7 +461,7 @@ async function btnPomoRepeat(interaction: ButtonInteraction, session: PomodoroSe
     return true;
 }
 
-async function btnPomoEnd(interaction: ButtonInteraction) {
+async function btnPomoEnd(interaction: ButtonInteraction, session: PomodoroSession | null) {
     const embed = new EmbedBuilder()
         .setColor(0x5865f2)
         .setTitle('Pomodoro Complete!')
@@ -460,6 +469,25 @@ async function btnPomoEnd(interaction: ButtonInteraction) {
         .setTimestamp();
 
     await interaction.update({ embeds: [embed], components: [] });
+
+    if (session) {
+        const timerKey = `${session.guildId}_${session.channelId}`;
+        const timerId = activeTimers.get(timerKey);
+        if (timerId) {
+            clearTimeout(timerId);
+            activeTimers.delete(timerKey);
+        }
+        const breakKey = `break_${session.guildId}_${session.channelId}`;
+        const breakId = breakTimers.get(breakKey);
+        if (breakId) {
+            clearTimeout(breakId);
+            breakTimers.delete(breakKey);
+        }
+        session.isActive = false;
+        await session.save();
+    }
+
+    if (interaction.guildId) leaveVC(interaction.guildId);
     return true;
 }
 
@@ -849,7 +877,13 @@ export function embedBreakActive(session: PomodoroSession) {
         .setCustomId(`pomodoro-skipbreak_${session.id}`)
         .setLabel('Skip Break')
         .setStyle(ButtonStyle.Secondary);
-    const row = new ActionRowBuilder().addComponents(skipBreakButton);
+
+    const endButton = new ButtonBuilder()
+        .setCustomId(`pomodoro-end_${session.id}`)
+        .setLabel('End')
+        .setStyle(ButtonStyle.Danger);
+
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(skipBreakButton, endButton);
     return { embeds: [embed], components: [row] };
 }
 
@@ -900,7 +934,12 @@ export function _createStartTimerButtons(session: PomodoroSessionData) {
         .setLabel('Skip to Break')
         .setStyle(ButtonStyle.Secondary);
 
-    return new ActionRowBuilder<ButtonBuilder>().addComponents(joinButton, leaveButton, skipToBreakButton);
+    const endButton = new ButtonBuilder()
+        .setCustomId(`pomodoro-end_${sessionId}`)
+        .setLabel('End')
+        .setStyle(ButtonStyle.Danger);
+
+    return new ActionRowBuilder<ButtonBuilder>().addComponents(joinButton, leaveButton, skipToBreakButton, endButton);
 }
 
 export function _createCompleteStartBreakButtons(session: PomodoroSessionData) {
