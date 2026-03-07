@@ -18,8 +18,8 @@ import {
 } from 'discord.js';
 import { PomodoroCycle, PomodoroSession } from '../../database/index.js';
 import { PomodoroSessionAttributes } from '../../database/models/PomodoroSession.js';
-import { leaveVC } from '../../utils/voice.js';
-import { channel } from 'node:diagnostics_channel';
+import { speakTTSCached } from '../../utils/voice.js';
+import { VoiceChannel } from 'discord.js';
 
 type PomodoroSessionData = PomodoroSessionAttributes;
 
@@ -32,19 +32,35 @@ export interface IPomodoroSpeaker {
 
 const activeTimers = new Map<string, NodeJS.Timeout>();
 const breakTimers = new Map<string, NodeJS.Timeout>();
-var pomodoroSpeaker: IPomodoroSpeaker = {
-    playStart() {
-        console.log("NOT IMPL");
-    },
-    playComplete() {
-        console.log('complete');
-    },
-    playSkipToBreak() {
-        console.log("skipping to break");
-    },
-    playBreakComplete() {
+
+function makeSpeaker(client: Client): IPomodoroSpeaker {
+    async function speak(session: PomodoroSession | PomodoroSessionAttributes, text: string) {
+        if (!session.voiceChannelId) return;
+        try {
+            const ch = await client.channels.fetch(session.voiceChannelId);
+            if (ch instanceof VoiceChannel) await speakTTSCached(ch, text);
+        } catch (err) {
+            console.error('[TTS] speakTTS error:', err);
+        }
     }
+    return {
+        playStart: (s) => { speak(s, 'Pomodoro started. Focus up!'); },
+        playComplete: (s) => { speak(s, 'Pomodoro complete. Time for a break!'); },
+        playSkipToBreak: (s) => { speak(s, 'Skipping to break.'); },
+        playBreakComplete: (s) => { speak(s, 'Break over. Ready for another pomodoro?'); },
+    };
+}
+
+var pomodoroSpeaker: IPomodoroSpeaker = {
+    playStart() { console.log("NOT IMPL"); },
+    playComplete() { console.log('complete'); },
+    playSkipToBreak() { console.log("skipping to break"); },
+    playBreakComplete() { console.log("break complete"); },
 };
+
+export function initPomodoroSpeaker(client: Client) {
+    pomodoroSpeaker = makeSpeaker(client);
+}
 
 
 // #region Commands
@@ -102,7 +118,7 @@ const leaderboardPomodoroSubcommand = new SlashCommandSubcommandBuilder()
     );
 
 export const data = new SlashCommandBuilder()
-    .setName('pomodoro2')
+    .setName('pomodoro')
     .setDescription("Pomodoro timer for focused study sessions")
     .addSubcommand(startPomodoroSubcommand)
     .addSubcommand(stopPomodoroSubcommand)
@@ -412,6 +428,14 @@ async function btnPomoBreakstart(interaction: ButtonInteraction, session: Pomodo
     }
     const embed = embedBreakActive(session);
     await interaction.update(embed as InteractionUpdateOptions);
+
+    const breakDuration = session.breakDuration * 60 * 1000;
+    const timerId = setTimeout(() => {
+        breakTimers.delete(breakKey);
+        completeBreak(session, interaction.client);
+    }, breakDuration);
+    breakTimers.set(breakKey, timerId);
+
     return true;
 }
 
@@ -423,7 +447,9 @@ async function btnPomoSkipBreak(interaction: ButtonInteraction, session: Pomodor
         clearTimeout(breakData);
         breakTimers.delete(breakKey);
     }
-    if (await checkExistsSession(interaction, session.channelId, session.voiceChannelId)) {
+    const timerKey = `${session.guildId}_${session.channelId}`;
+    if (activeTimers.has(timerKey)) {
+        await interaction.reply({ content: 'There is already an active pomodoro timer in this channel!', ephemeral: true });
         return true;
     }
     const now = new Date();
@@ -516,10 +542,38 @@ async function handleLeave(session: PomodoroSession | null, interaction: ChatInp
     session.participants = updatedParticipants;
     await session.save();
 
-    await interaction.reply({
-        content: "You've left the pomodoro session. You won't be pinged when it ends.",
-        ephemeral: true,
-    });
+    // If no participants left, end the session
+    if (updatedParticipants.length === 0) {
+        const timerKey = `${session.guildId}_${session.channelId}`;
+        const timerId = activeTimers.get(timerKey);
+        if (timerId) {
+            clearTimeout(timerId);
+            activeTimers.delete(timerKey);
+        }
+        session.isActive = false;
+        await session.save();
+
+        const embed = new EmbedBuilder()
+            .setColor(0xed4245)
+            .setTitle('Pomodoro Ended')
+            .setDescription('All participants have left. The pomodoro session has been ended.')
+            .setTimestamp();
+
+        if (interaction.isButton()) {
+            await interaction.update({ embeds: [embed], components: [] });
+        } else {
+            await interaction.reply({ embeds: [embed] });
+        }
+        return;
+    }
+
+    // Update the embed with the new participant list
+    const updatedEmbed = embedTimerStatus(session, "Pomodoro Timer", true);
+    if (interaction.isButton()) {
+        await interaction.update(updatedEmbed);
+    } else {
+        await interaction.reply({ content: "You've left the pomodoro session.", ephemeral: true });
+    }
 }
 
 /**
@@ -557,8 +611,9 @@ async function repeatPomoSession(session: PomodoroSession, interaction: ButtonIn
         clearTimeout(breakId);
         breakTimers.delete(breakKey);
     }
-    // If repeat, then return
-    if (await checkExistsSession(interaction, session.channelId, session.voiceChannelId)) {
+    const timerKey = `${session.guildId}_${session.channelId}`;
+    if (activeTimers.has(timerKey)) {
+        await interaction.reply({ content: 'There is already an active pomodoro timer in this channel!', ephemeral: true });
         return true;
     }
     // Start a new session with the same duration and participants
@@ -817,6 +872,29 @@ function _createCompleteStartBreakButtons(session: PomodoroSessionData) {
         .setStyle(ButtonStyle.Secondary);
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(breakButton, repeatButton, dismissButton);
     return row;
+}
+
+// #endregion
+
+// #region Startup
+
+export async function restoreTimers(client: Client): Promise<void> {
+    const activeSessions = await PomodoroSession.findAll({
+        where: { isActive: true },
+    });
+
+    for (const session of activeSessions) {
+        const now = new Date();
+        const endsAt = new Date(session.endsAt);
+
+        if (endsAt <= now) {
+            await completeTimer(session, client);
+        } else {
+            scheduleTimer(session, client);
+        }
+    }
+
+    console.log(`Restored ${activeSessions.length} active pomodoro timer(s)`);
 }
 
 // #endregion

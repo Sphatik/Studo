@@ -6,15 +6,13 @@ import { execute as logExecute } from './commands/log.js';
 import {
   execute as pomodoroExecute,
   handleButtonInteraction as pomodoroButtonHandler,
+  initPomodoroSpeaker,
   restoreTimers as restorePomodoroTimers,
-} from './commands/pomodoro.js';
-import {
-  execute as pomodoro2Execute,
-  handleButtonInteraction as pomodoro2ButtonHandler
 } from './commands/pomodoro/pomodoro.js';
 import { handleMessageCreate } from './events/messageCreate.js';
 import { handleVoiceStateUpdate } from './events/voiceStateUpdate.js';
 import { startScheduler } from './scheduler.js';
+import { loadTTSCache } from './utils/voice.js';
 
 const client = new Client({
   intents: [
@@ -34,6 +32,8 @@ client.on(Events.ClientReady, async (readyClient) => {
   await sequelize.query('PRAGMA foreign_keys = ON;');
   console.log('Database synced!');
 
+  loadTTSCache();
+  initPomodoroSpeaker(readyClient);
   startScheduler(client);
   await restorePomodoroTimers(client);
 });
@@ -41,8 +41,7 @@ client.on(Events.ClientReady, async (readyClient) => {
 client.on(Events.InteractionCreate, async (interaction: Interaction) => {
   // Handle button interactions
   if (interaction.isButton()) {
-    // await pomodoroButtonHandler(interaction, client);
-    await pomodoro2ButtonHandler(interaction, client);
+    await pomodoroButtonHandler(interaction, client);
     return;
   }
 
@@ -56,8 +55,6 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     await logExecute(interaction);
   } else if (interaction.commandName === 'pomodoro') {
     await pomodoroExecute(interaction);
-  } else if (interaction.commandName === 'pomodoro2') {
-    await pomodoro2Execute(interaction);
   }
 });
 

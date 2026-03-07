@@ -1,7 +1,7 @@
 {
   "type": "module",
   "scripts": {
-    "register": "node src/register.js",
+    "register": "tsx src/register.js",
     "bot": "tsx src/bot.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
