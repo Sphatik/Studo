@@ -215,7 +215,6 @@ async function handleStartCmd(interaction: ChatInputCommandInteraction): Promise
 
     if (await checkExistsSession(interaction, channelId, voiceChannelId))
         return;
-    const existingSession = await getActiveChannelPomodoro(channelId, voiceChannelId);
 
     const now = new Date();
     const endsAt = new Date(now.getTime() + duration * 60 * 1000);
@@ -297,7 +296,7 @@ async function handleStatus(interaction: ChatInputCommandInteraction): Promise<v
             if (userVoiceChannelId != null) {
                 session = await PomodoroSession.findOne({
                     where: {
-                        channelId,
+                        voiceChannelId: userVoiceChannelId,
                         isActive: true,
                     },
                 });
@@ -313,6 +312,7 @@ async function handleStatus(interaction: ChatInputCommandInteraction): Promise<v
         return;
     }
     const embed = embedTimerStatus(session, "Pomodoro Timer Status", false);
+    await interaction.reply(embed);
 }
 
 async function handleStop(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -328,15 +328,6 @@ async function handleStop(interaction: ChatInputCommandInteraction): Promise<voi
     if (!session) {
         await interaction.reply({
             content: 'No active pomodoro timer in this channel.',
-            ephemeral: true,
-        });
-        return;
-    }
-
-    // Only creator can stop the timer
-    if (session.creatorId !== interaction.user.id) {
-        await interaction.reply({
-            content: 'Only the person who started the pomodoro can stop it.',
             ephemeral: true,
         });
         return;
@@ -470,7 +461,7 @@ async function btnPomoSkipBreak(interaction: ButtonInteraction, session: Pomodor
     if (session.voiceChannelId) {
         pomodoroSpeaker.playStart(session);
     }
-    const embed = embedTimerStatus(session, "Pomodoro Timer Started!", true);
+    const embed = embedTimerStatus(newSession, "Pomodoro Timer Started!", true);
     await interaction.update(embed);
     return true;
 }
@@ -635,9 +626,9 @@ async function repeatPomoSession(session: PomodoroSession, interaction: ButtonIn
 
     scheduleTimer(newSession, interaction.client);
 
-    pomodoroSpeaker.playStart(session);
+    pomodoroSpeaker.playStart(newSession);
 
-    const embed = embedTimerStatus(session, "Pomodoro Timer Started!", true);
+    const embed = embedTimerStatus(newSession, "Pomodoro Timer Started!", true);
     await interaction.update(embed);
 
     return true;
@@ -684,11 +675,11 @@ async function completeTimer(session: PomodoroSessionData, client: Client): Prom
             }))
         );
     }
-    pomodoroSpeaker.playComplete(session);
+    pomodoroSpeaker.playComplete(currentSession);
     try {
         const channel = await client.channels.fetch(currentSession.channelId);
         if (!channel) return;
-        const embed = embedCompleteStartBreak(session);
+        const embed = embedCompleteStartBreak(currentSession);
         (channel as TextChannel).send(embed);
     } catch (e) {
         console.error("Failed sending break-complete msg", e);
@@ -741,13 +732,14 @@ function embedTimerStatus(session: PomodoroSessionData, title: String, hasButton
 
     const embed = new EmbedBuilder()
         .setColor(0x57f287)
-        .setTitle('Pomodoro Timer Started!')
+        .setTitle(title as string)
         .setDescription(
             `A ${session.duration} minute pomodoro session has started. Click **Join** to participate!\nEnds <t:${endsAtTimestamp}:R>`
         )
         .addFields(fields)
         .setFooter({ text: `Started by user ${session.creatorId}` })
         .setTimestamp();
+    if (!hasButtons) return { embeds: [embed], components: [] };
     const btns = _createStartTimerButtons(session);
     return { embeds: [embed], components: [btns] };
 }
@@ -823,7 +815,7 @@ function embedBreakOver(session: PomodoroSessionData) {
         .setStyle(ButtonStyle.Success);
 
     const dismissButton = new ButtonBuilder()
-        .setCustomId(`pomodoro-dismiss_${session.id}`)
+        .setCustomId(`pomodoro-end_${session.id}`)
         .setLabel('Dismiss')
         .setStyle(ButtonStyle.Secondary);
 
