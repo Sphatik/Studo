@@ -264,13 +264,25 @@ async function handleStartCmd(interaction: ChatInputCommandInteraction): Promise
     if (await checkExistsSession(interaction, channelId, voiceChannelId))
         return;
 
+    // Collect all non-bot members already in the voice channel
+    let participants = [interaction.user.id];
+    if (voiceChannelId) {
+        const vc = await interaction.guild?.channels.fetch(voiceChannelId);
+        if (vc?.isVoiceBased()) {
+            const vcMembers = vc.members
+                .filter(m => !m.user.bot && m.id !== interaction.user.id)
+                .map(m => m.id);
+            participants = [interaction.user.id, ...vcMembers];
+        }
+    }
+
     const now = new Date();
     const endsAt = new Date(now.getTime() + duration * 60 * 1000);
     const session = await PomodoroSession.create({
         guildId,
         channelId,
         creatorId: interaction.user.id,
-        participants: [interaction.user.id],
+        participants,
         duration,
         breakDuration,
         startedAt: now,
