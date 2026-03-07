@@ -37,6 +37,9 @@ export function createMockGuild(overrides: Partial<{ id: string; name: string; m
         members: {
             fetch: vi.fn().mockResolvedValue(createMockGuildMember(memberVoiceChannelId)),
         },
+        channels: {
+            fetch: vi.fn().mockResolvedValue(null),
+        },
     } as unknown as Guild;
 }
 
@@ -82,7 +85,7 @@ export function createMockInteraction(overrides: {
             getChannel: vi.fn().mockReturnValue(voiceChannel),
             getString: vi.fn().mockReturnValue(timeframe),
         },
-        reply: vi.fn().mockResolvedValue(undefined),
+        reply: vi.fn().mockResolvedValue({ fetch: vi.fn().mockResolvedValue({}) }),
         isButton: vi.fn().mockReturnValue(false),
     } as unknown as ChatInputCommandInteraction;
 }

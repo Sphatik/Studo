@@ -17,9 +17,9 @@ import {
     InteractionUpdateOptions,
 } from 'discord.js';
 import { Op } from 'sequelize';
-import { PomodoroCycle, PomodoroSession } from '../../database/index.js';
+import { PomodoroCycle, PomodoroSession, ServerConfig } from '../../database/index.js';
 import { PomodoroSessionAttributes } from '../../database/models/PomodoroSession.js';
-import { speakTTSCached } from '../../utils/voice.js';
+import { speakTTSCached, leaveVC } from '../../utils/voice.js';
 import { VoiceChannel } from 'discord.js';
 
 type PomodoroSessionData = PomodoroSessionAttributes;
@@ -35,11 +35,16 @@ export interface IPomodoroSpeaker {
 export const activeTimers = new Map<string, NodeJS.Timeout>();
 /** @internal exposed for testing */
 export const breakTimers = new Map<string, NodeJS.Timeout>();
+/** Maps session ID to the start message, so join interactions can update it */
+export const sessionMessages = new Map<number, import('discord.js').Message>();
+/** Maps `${sessionId}_${userId}` to the VC join prompt message, so it can be deleted when the user joins */
+export const joinPromptMessages = new Map<string, import('discord.js').Message>();
 
 function makeSpeaker(client: Client): IPomodoroSpeaker {
     async function speak(session: PomodoroSession | PomodoroSessionAttributes, text: string) {
         if (!session.voiceChannelId) return;
         try {
+            console.debug("Saying: " + text);
             const ch = await client.channels.fetch(session.voiceChannelId);
             if (ch instanceof VoiceChannel) await speakTTSCached(ch, text);
         } catch (err) {
@@ -121,6 +126,19 @@ const leaderboardPomodoroSubcommand = new SlashCommandSubcommandBuilder()
                 { name: 'Today', value: 'daily' }
             )
     );
+const setChannelSubcommand = new SlashCommandSubcommandBuilder()
+    .setName('set-channel')
+    .setDescription('(Admin) Set the default text channel for pomodoro sessions')
+    .addChannelOption(option =>
+        option
+            .setName('channel')
+            .setDescription('Text channel to use for pomodoro sessions')
+            .setRequired(true)
+            .addChannelTypes(ChannelType.GuildText)
+    );
+const panelSubcommand = new SlashCommandSubcommandBuilder()
+    .setName('panel')
+    .setDescription('(Admin) Post the pomodoro preset panel in this channel');
 
 export const data = new SlashCommandBuilder()
     .setName('pomodoro')
@@ -130,7 +148,9 @@ export const data = new SlashCommandBuilder()
     .addSubcommand(joinPomodoroSubcommand)
     .addSubcommand(leavePomodoroSubcommand)
     .addSubcommand(leaderboardPomodoroSubcommand)
-    .addSubcommand(statusPomodoroSubcommand);
+    .addSubcommand(statusPomodoroSubcommand)
+    .addSubcommand(setChannelSubcommand)
+    .addSubcommand(panelSubcommand);
 
 // #endregion Commands
 
@@ -156,20 +176,35 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         case 'leaderboard':
             await handleLeaderboard(interaction);
             break;
+        case 'set-channel':
+            await handleSetChannel(interaction);
+            break;
+        case 'panel':
+            await handlePanel(interaction);
+            break;
     }
 }
 
 export async function handleButtonInteraction(interaction: ButtonInteraction, client: Client) {
     if (!interaction.isButton()) return false;
-    const [action, sessionId] = interaction.customId.split('_');
+    const parts = interaction.customId.split('_');
+    const action = parts[0];
+    const sessionId = parts[1];
     const session = await PomodoroSession.findByPk(parseInt(sessionId));
 
     // Only want pomodoro buttons
     if (!action.includes('pomodoro')) return;
 
+    // Preset buttons — no session needed
+    if (action === 'pomodoro-preset') {
+        const duration = parseInt(parts[1]);
+        const breakDuration = parseInt(parts[2]);
+        return await btnPomoPreset(interaction, client, duration, breakDuration);
+    }
+
     // Actions that dont require sessions
     if (action === 'pomodoro-end') {
-        return await btnPomoEnd(interaction);
+        return await btnPomoEnd(interaction, session);
     }
     // -----
 
@@ -214,12 +249,32 @@ async function handleStartCmd(interaction: ChatInputCommandInteraction): Promise
     const duration = interaction.options.getInteger('duration') || 25;
     const breakDuration = interaction.options.getInteger('break') || 5;
     const voiceChannel = interaction.options.getChannel('voice');
-    const voiceChannelId = voiceChannel ? voiceChannel.id : null;
+    let voiceChannelId = voiceChannel ? voiceChannel.id : null;
+
+    // Auto-join the voice channel the user is currently in (if no voice channel specified)
+    if (!voiceChannelId) {
+        const member = await interaction.guild?.members.fetch(interaction.user.id);
+        const userVoiceChannelId = member?.voice.channelId ?? null;
+        if (userVoiceChannelId) voiceChannelId = userVoiceChannelId;
+    }
+
     const channelId = interaction.channel!.id;
     const guildId = interaction.guild!.id;
 
     if (await checkExistsSession(interaction, channelId, voiceChannelId))
         return;
+
+    // Collect all non-bot members already in the voice channel
+    let participants = [interaction.user.id];
+    if (voiceChannelId) {
+        const vc = await interaction.guild?.channels.fetch(voiceChannelId);
+        if (vc?.isVoiceBased()) {
+            const vcMembers = vc.members
+                .filter(m => !m.user.bot && m.id !== interaction.user.id)
+                .map(m => m.id);
+            participants = [interaction.user.id, ...vcMembers];
+        }
+    }
 
     const now = new Date();
     const endsAt = new Date(now.getTime() + duration * 60 * 1000);
@@ -227,7 +282,7 @@ async function handleStartCmd(interaction: ChatInputCommandInteraction): Promise
         guildId,
         channelId,
         creatorId: interaction.user.id,
-        participants: [interaction.user.id],
+        participants,
         duration,
         breakDuration,
         startedAt: now,
@@ -239,7 +294,9 @@ async function handleStartCmd(interaction: ChatInputCommandInteraction): Promise
 
     if (voiceChannelId)
         pomodoroSpeaker.playStart(session);
-    await interaction.reply(embedTimerStatus(session, "Pomodoro Timer Started!", true));
+    const reply = await interaction.reply(embedTimerStatus(session, "Pomodoro Timer Started!", true));
+    const message = await reply.fetch();
+    sessionMessages.set(session.id, message);
 }
 
 async function handleJoinCmd(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -421,9 +478,92 @@ async function handleLeaderboard(interaction: ChatInputCommandInteraction): Prom
 
     await interaction.reply({ embeds: [embed] });
 }
+
+async function handleSetChannel(interaction: ChatInputCommandInteraction): Promise<void> {
+    if (!interaction.memberPermissions?.has('ManageGuild')) {
+        await interaction.reply({ content: 'You need the **Manage Server** permission to use this command.', ephemeral: true });
+        return;
+    }
+    const channel = interaction.options.getChannel('channel', true);
+    const guildId = interaction.guild!.id;
+    await ServerConfig.upsert({ guildId, pomodoroChannelId: channel.id } as any);
+    await interaction.reply({ content: `Pomodoro default channel set to <#${channel.id}>.`, ephemeral: true });
+}
+
+async function handlePanel(interaction: ChatInputCommandInteraction): Promise<void> {
+    if (!interaction.memberPermissions?.has('ManageGuild')) {
+        await interaction.reply({ content: 'You need the **Manage Server** permission to use this command.', ephemeral: true });
+        return;
+    }
+    const embed = new EmbedBuilder()
+        .setColor(0x57f287)
+        .setTitle('Start a Pomodoro Session')
+        .setDescription('Pick a preset to start a pomodoro. The bot will join your current voice channel.\n\n**25/5** — Classic pomodoro\n**50/10** — Long focus\n**55/5** — Extended focus');
+
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId('pomodoro-preset_25_5').setLabel('25 / 5').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('pomodoro-preset_50_10').setLabel('50 / 10').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('pomodoro-preset_55_5').setLabel('55 / 5').setStyle(ButtonStyle.Primary),
+    );
+
+    await interaction.reply({ embeds: [embed], components: [row] });
+}
 // #endregion Command Impl
 
 // #region Button Impl
+
+async function btnPomoPreset(interaction: ButtonInteraction, client: Client, duration: number, breakDuration: number) {
+    const guildId = interaction.guildId!;
+
+    // Look up the configured pomodoro channel for this server
+    const config = await ServerConfig.findByPk(guildId);
+    const channelId = config?.pomodoroChannelId;
+    if (!channelId) {
+        await interaction.reply({
+            content: 'No pomodoro channel configured. An admin must run `/pomodoro set-channel` first.',
+            ephemeral: true,
+        });
+        return false;
+    }
+
+    // Check if there's already an active session in that channel
+    if (await getActiveChannelPomodoro(channelId, null)) {
+        await interaction.reply({
+            content: `There is already an active pomodoro session in <#${channelId}>!`,
+            ephemeral: true,
+        });
+        return false;
+    }
+
+    // Auto-detect the user's current voice channel
+    const member = await interaction.guild?.members.fetch(interaction.user.id);
+    const voiceChannelId = member?.voice.channelId ?? null;
+
+    const now = new Date();
+    const endsAt = new Date(now.getTime() + duration * 60 * 1000);
+    const session = await PomodoroSession.create({
+        guildId,
+        channelId,
+        creatorId: interaction.user.id,
+        participants: [interaction.user.id],
+        duration,
+        breakDuration,
+        startedAt: now,
+        endsAt,
+        isActive: true,
+        voiceChannelId,
+    });
+    scheduleTimer(session, client);
+    if (voiceChannelId) pomodoroSpeaker.playStart(session);
+
+    const embed = embedTimerStatus(session, 'Pomodoro Timer Started!', true);
+    // Post in the configured pomodoro channel
+    const channel = await client.channels.fetch(channelId) as TextChannel;
+    await channel.send(embed);
+
+    await interaction.reply({ content: `Pomodoro started in <#${channelId}>!`, ephemeral: true });
+    return true;
+}
 
 async function btnPomoJoin(interaction: ButtonInteraction, session: PomodoroSession) {
     if (!session.isActive) {
@@ -443,6 +583,14 @@ async function btnPomoLeave(interaction: ButtonInteraction, session: PomodoroSes
 }
 
 async function btnPomoSkipToBreak(interaction: ButtonInteraction, session: PomodoroSession) {
+    const onlyUser = session.participants.length === 1 && session.participants[0] === interaction.user.id;
+    if (!onlyUser && session.creatorId !== interaction.user.id) {
+        await interaction.reply({
+            content: 'Only the session creator can skip to break.',
+            ephemeral: true,
+        });
+        return;
+    }
     await skipToBreak(session, interaction);
 
 }
@@ -452,7 +600,19 @@ async function btnPomoRepeat(interaction: ButtonInteraction, session: PomodoroSe
     return true;
 }
 
-async function btnPomoEnd(interaction: ButtonInteraction) {
+async function btnPomoEnd(interaction: ButtonInteraction, session: PomodoroSession | null) {
+    // If there's an active session with other participants, only the creator can end it
+    if (session?.isActive) {
+        const onlyUser = session.participants.length === 1 && session.participants[0] === interaction.user.id;
+        if (!onlyUser && session.creatorId !== interaction.user.id) {
+            await interaction.reply({
+                content: 'Only the session creator can end the pomodoro.',
+                ephemeral: true,
+            });
+            return false;
+        }
+    }
+
     const embed = new EmbedBuilder()
         .setColor(0x5865f2)
         .setTitle('Pomodoro Complete!')
@@ -460,6 +620,26 @@ async function btnPomoEnd(interaction: ButtonInteraction) {
         .setTimestamp();
 
     await interaction.update({ embeds: [embed], components: [] });
+
+    if (session) {
+        const timerKey = `${session.guildId}_${session.channelId}`;
+        const timerId = activeTimers.get(timerKey);
+        if (timerId) {
+            clearTimeout(timerId);
+            activeTimers.delete(timerKey);
+        }
+        const breakKey = `break_${session.guildId}_${session.channelId}`;
+        const breakId = breakTimers.get(breakKey);
+        if (breakId) {
+            clearTimeout(breakId);
+            breakTimers.delete(breakKey);
+        }
+        session.isActive = false;
+        await session.save();
+        sessionMessages.delete(session.id);
+    }
+
+    if (interaction.guildId) leaveVC(interaction.guildId);
     return true;
 }
 
@@ -565,8 +745,25 @@ async function handleJoin(session: PomodoroSession | null, interaction: ChatInpu
     session.participants = participants;
     await session.save();
 
-    const embed = embedUserJoined(session, interaction.user.displayName);
-    await interaction.reply({ embeds: [embed] });
+    if (interaction.isButton()) {
+        // Edit the VC join prompt message to confirm the user joined
+        const promptKey = `${session.id}_${interaction.user.id}`;
+        const promptMessage = joinPromptMessages.get(promptKey);
+        if (promptMessage) {
+            await promptMessage.edit({ content: `<@${interaction.user.id}> joined the pomodoro session!`, embeds: [], components: [] }).catch(() => {});
+            joinPromptMessages.delete(promptKey);
+        }
+
+        // Update the original start message with the new participant list
+        const startMessage = sessionMessages.get(session.id);
+        if (startMessage) {
+            await startMessage.edit(embedTimerStatus(session, "Pomodoro Timer Started!", true));
+        }
+        await interaction.deferUpdate();
+    } else {
+        const embed = embedUserJoined(session, interaction.user.displayName);
+        await interaction.reply({ embeds: [embed] });
+    }
 }
 
 async function handleLeave(session: PomodoroSession | null, interaction: ChatInputCommandInteraction | ButtonInteraction) {
@@ -599,6 +796,7 @@ async function handleLeave(session: PomodoroSession | null, interaction: ChatInp
         }
         session.isActive = false;
         await session.save();
+        sessionMessages.delete(session.id);
 
         const embed = new EmbedBuilder()
             .setColor(0xed4245)
@@ -718,6 +916,7 @@ export async function completeTimer(session: PomodoroSessionData, client: Client
 
     currentSession.isActive = false;
     await currentSession.save();
+    sessionMessages.delete(currentSession.id);
 
     // Log a completed cycle for each participant
     const participants = currentSession.participants;
@@ -849,7 +1048,13 @@ export function embedBreakActive(session: PomodoroSession) {
         .setCustomId(`pomodoro-skipbreak_${session.id}`)
         .setLabel('Skip Break')
         .setStyle(ButtonStyle.Secondary);
-    const row = new ActionRowBuilder().addComponents(skipBreakButton);
+
+    const endButton = new ButtonBuilder()
+        .setCustomId(`pomodoro-end_${session.id}`)
+        .setLabel('End')
+        .setStyle(ButtonStyle.Danger);
+
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(skipBreakButton, endButton);
     return { embeds: [embed], components: [row] };
 }
 
@@ -900,7 +1105,12 @@ export function _createStartTimerButtons(session: PomodoroSessionData) {
         .setLabel('Skip to Break')
         .setStyle(ButtonStyle.Secondary);
 
-    return new ActionRowBuilder<ButtonBuilder>().addComponents(joinButton, leaveButton, skipToBreakButton);
+    const endButton = new ButtonBuilder()
+        .setCustomId(`pomodoro-end_${sessionId}`)
+        .setLabel('End')
+        .setStyle(ButtonStyle.Danger);
+
+    return new ActionRowBuilder<ButtonBuilder>().addComponents(joinButton, leaveButton, skipToBreakButton, endButton);
 }
 
 export function _createCompleteStartBreakButtons(session: PomodoroSessionData) {
