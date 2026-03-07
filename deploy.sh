@@ -12,7 +12,7 @@ git pull origin main
 
 # Install/update dependencies
 echo "📦 Installing dependencies..."
-npm install --production
+npm install
 
 # Restart the bot with PM2
 echo "🔄 Restarting bot..."
