@@ -565,6 +565,14 @@ async function btnPomoLeave(interaction: ButtonInteraction, session: PomodoroSes
 }
 
 async function btnPomoSkipToBreak(interaction: ButtonInteraction, session: PomodoroSession) {
+    const onlyUser = session.participants.length === 1 && session.participants[0] === interaction.user.id;
+    if (!onlyUser && session.creatorId !== interaction.user.id) {
+        await interaction.reply({
+            content: 'Only the session creator can skip to break.',
+            ephemeral: true,
+        });
+        return;
+    }
     await skipToBreak(session, interaction);
 
 }
@@ -575,6 +583,18 @@ async function btnPomoRepeat(interaction: ButtonInteraction, session: PomodoroSe
 }
 
 async function btnPomoEnd(interaction: ButtonInteraction, session: PomodoroSession | null) {
+    // If there's an active session with other participants, only the creator can end it
+    if (session?.isActive) {
+        const onlyUser = session.participants.length === 1 && session.participants[0] === interaction.user.id;
+        if (!onlyUser && session.creatorId !== interaction.user.id) {
+            await interaction.reply({
+                content: 'Only the session creator can end the pomodoro.',
+                ephemeral: true,
+            });
+            return false;
+        }
+    }
+
     const embed = new EmbedBuilder()
         .setColor(0x5865f2)
         .setTitle('Pomodoro Complete!')
@@ -707,7 +727,11 @@ async function handleJoin(session: PomodoroSession | null, interaction: ChatInpu
     await session.save();
 
     const embed = embedUserJoined(session, interaction.user.displayName);
-    await interaction.reply({ embeds: [embed] });
+    if (interaction.isButton()) {
+        await interaction.update({ embeds: [embed], components: [] });
+    } else {
+        await interaction.reply({ embeds: [embed] });
+    }
 }
 
 async function handleLeave(session: PomodoroSession | null, interaction: ChatInputCommandInteraction | ButtonInteraction) {
