@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { REST, Routes } from 'discord.js';
 import { data as leetcodeCommand } from './commands/leetcode.js';
 import { data as logCommand } from './commands/log.js';
-import { data as pomodoroCommand } from './commands/pomodoro.js';
+import { data as pomodoroCommand } from './commands/pomodoro/pomodoro.js';
 
 const commands = [
   {

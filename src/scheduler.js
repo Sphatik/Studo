@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import { Op } from 'sequelize';
-import { ServerConfig } from './database/index.js';
+import { ServerConfig } from './database/index.ts';
 import { generateDailySummaryEmbed } from './commands/leetcode.js';
 import { generateStudySummaryEmbed } from './commands/log.js';
 

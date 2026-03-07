@@ -5,7 +5,8 @@
       "type": "node",
       "request": "launch",
       "name": "Launch Bot",
-      "program": "${workspaceFolder}/src/bot.js",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tsx", "${workspaceFolder}/src/bot.ts"],
       "skipFiles": ["<node_internals>/**"],
       "envFile": "${workspaceFolder}/.env",
       "console": "integratedTerminal"
