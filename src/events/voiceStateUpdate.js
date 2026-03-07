@@ -1,4 +1,5 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
+import pkg from 'discord.js';
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = pkg;
 import { User, VoiceSession, ServerConfig, PomodoroSession } from '../database/index.js';
 import { Cooldown } from '../utils/cooldown.js';
 import { joinPromptMessages } from '../commands/pomodoro/pomodoro.js';

@@ -1,4 +1,5 @@
-import { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } from 'discord.js';
+import pkg from 'discord.js';
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = pkg;
 import { Op } from 'sequelize';
 import { User, StudyLog, VoiceSession, ServerConfig } from '../database/index.ts';
 
