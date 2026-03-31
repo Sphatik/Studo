@@ -53,9 +53,11 @@ export async function handleMessageCreate(message) {
       if (hoursSince < 24) continue;
     }
 
-    // Verify the problem actually exists on LeetCode
-    const isValid = await verifyLeetCodeProblem(problem.slug);
-    if (!isValid) continue;
+    // Verify the problem exists (only applicable for LeetCode; GFG/NeetCode skip verification)
+    if (problem.source === 'leetcode') {
+      const isValid = await verifyLeetCodeProblem(problem.slug);
+      if (!isValid) continue;
+    }
 
     // Create submission record
     const submission = await Submission.create({

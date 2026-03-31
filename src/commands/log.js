@@ -340,14 +340,12 @@ async function handleSummary(interaction) {
  */
 export async function generateStudySummaryEmbed(guildId) {
   const now = new Date();
-
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
+  const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
   const logs = await StudyLog.findAll({
     where: {
       guildId,
-      createdAt: { [Op.gte]: todayStart },
+      createdAt: { [Op.gte]: since },
     },
     order: [['createdAt', 'ASC']],
   });
@@ -355,7 +353,7 @@ export async function generateStudySummaryEmbed(guildId) {
   const sessions = await VoiceSession.findAll({
     where: {
       guildId,
-      joinedAt: { [Op.gte]: todayStart },
+      joinedAt: { [Op.gte]: since },
       leftAt: { [Op.ne]: null },
     },
   });
@@ -416,7 +414,7 @@ export async function generateStudySummaryEmbed(guildId) {
 
   return new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle(`Daily Study Summary`)
+    .setTitle(`Last 24 Hours Study Summary`)
     .setDescription(entries.join('\n\n'))
     .setFooter({
       text: `${userActivity.size} member(s) | ${logs.length} logs | ${totalHours}h ${totalMins}m total voice time`

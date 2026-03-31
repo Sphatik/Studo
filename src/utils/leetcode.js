@@ -8,6 +8,22 @@
 const LEETCODE_PROBLEM_REGEX = /(?:https?:\/\/)?(?:www\.)?leetcode\.com\/problems\/([a-z0-9-]+)\/?(?:[a-z]*\/?)?/gi;
 
 /**
+ * Regex to match GeeksForGeeks problem URLs.
+ * Matches:
+ *   - https://www.geeksforgeeks.org/problems/detect-cycle-in-an-undirected-graph/1
+ *   - geeksforgeeks.org/problems/two-sum/0
+ */
+const GFG_PROBLEM_REGEX = /(?:https?:\/\/)?(?:www\.)?geeksforgeeks\.org\/problems\/([a-z0-9-]+)\/?/gi;
+
+/**
+ * Regex to match NeetCode problem URLs.
+ * Matches:
+ *   - https://neetcode.io/problems/minimum-stack/question?list=neetcode150
+ *   - neetcode.io/problems/two-sum
+ */
+const NEETCODE_PROBLEM_REGEX = /(?:https?:\/\/)?(?:www\.)?neetcode\.io\/problems\/([a-z0-9-]+)\/?/gi;
+
+/**
  * Converts a problem slug to a readable title.
  * @param {string} slug - e.g., "two-sum"
  * @returns {string} - e.g., "Two Sum"
@@ -51,28 +67,47 @@ export async function verifyLeetCodeProblem(slug) {
 }
 
 /**
- * Extracts LeetCode problems from message content.
+ * Extracts LeetCode, GFG, and NeetCode problems from message content.
  * @param {string} content - Message text
- * @returns {Array<{url: string, slug: string, title: string}>}
+ * @returns {Array<{url: string, slug: string, title: string, source: string}>}
  */
 export function extractLeetCodeProblems(content) {
   const problems = [];
   const seen = new Set();
 
-  // Reset regex state
-  LEETCODE_PROBLEM_REGEX.lastIndex = 0;
+  const sources = [
+    {
+      regex: LEETCODE_PROBLEM_REGEX,
+      source: 'leetcode',
+      buildUrl: slug => `https://leetcode.com/problems/${slug}/`,
+    },
+    {
+      regex: GFG_PROBLEM_REGEX,
+      source: 'gfg',
+      buildUrl: slug => `https://www.geeksforgeeks.org/problems/${slug}/`,
+    },
+    {
+      regex: NEETCODE_PROBLEM_REGEX,
+      source: 'neetcode',
+      buildUrl: slug => `https://neetcode.io/problems/${slug}/`,
+    },
+  ];
 
-  let match;
-  while ((match = LEETCODE_PROBLEM_REGEX.exec(content)) !== null) {
-    const slug = match[1];
-
-    if (!seen.has(slug)) {
-      seen.add(slug);
-      problems.push({
-        url: `https://leetcode.com/problems/${slug}/`,
-        slug,
-        title: slugToTitle(slug),
-      });
+  for (const { regex, source, buildUrl } of sources) {
+    regex.lastIndex = 0;
+    let match;
+    while ((match = regex.exec(content)) !== null) {
+      const slug = match[1];
+      const key = `${source}:${slug}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        problems.push({
+          url: buildUrl(slug),
+          slug,
+          title: slugToTitle(slug),
+          source,
+        });
+      }
     }
   }
 
