@@ -179,20 +179,19 @@ async function handleSetChannel(interaction) {
 }
 
 async function handleToday(interaction) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const submissions = await Submission.findAll({
     where: {
       guildId: interaction.guild.id,
-      createdAt: { [Op.gte]: today },
+      createdAt: { [Op.gte]: since },
     },
     order: [['createdAt', 'ASC']],
   });
 
   if (submissions.length === 0) {
     await interaction.reply({
-      content: 'No problems solved today yet. Be the first!',
+      content: 'No problems solved in the last 24 hours. Be the first!',
       ephemeral: true,
     });
     return;
@@ -218,7 +217,7 @@ async function handleToday(interaction) {
 
   const embed = new EmbedBuilder()
     .setColor(0xffa116)
-    .setTitle(`Today's LeetCode Activity`)
+    .setTitle(`Last 24 Hours LeetCode Activity`)
     .setDescription(entries.join('\n\n'))
     .setFooter({ text: `${submissions.length} problem(s) solved by ${userSubmissions.size} member(s)` })
     .setTimestamp();
@@ -246,11 +245,15 @@ async function handlePurge(interaction) {
     return;
   }
 
-  // Get unique slugs to minimize API calls
-  const slugs = [...new Set(submissions.map(s => s.problemSlug))];
+  // Get unique LeetCode slugs only (GFG/NeetCode can't be verified via LeetCode's API)
+  const leetcodeSlugs = [...new Set(
+    submissions
+      .filter(s => s.problemUrl.includes('leetcode.com'))
+      .map(s => s.problemSlug)
+  )];
   const invalidSlugs = new Set();
 
-  for (const slug of slugs) {
+  for (const slug of leetcodeSlugs) {
     const isValid = await verifyLeetCodeProblem(slug);
     if (!isValid) {
       invalidSlugs.add(slug);
@@ -262,8 +265,10 @@ async function handlePurge(interaction) {
     return;
   }
 
-  // Find all submissions with invalid slugs
-  const invalidSubmissions = submissions.filter(s => invalidSlugs.has(s.problemSlug));
+  // Find all invalid submissions (only LeetCode ones with invalid slugs)
+  const invalidSubmissions = submissions.filter(
+    s => s.problemUrl.includes('leetcode.com') && invalidSlugs.has(s.problemSlug)
+  );
 
   // Group removed count per user to fix totalSolved
   const removedPerUser = new Map();
@@ -272,10 +277,10 @@ async function handlePurge(interaction) {
   }
 
   // Delete invalid submissions
+  const invalidIds = invalidSubmissions.map(s => s.id);
   await Submission.destroy({
     where: {
-      guildId: interaction.guild.id,
-      problemSlug: { [Op.in]: [...invalidSlugs] },
+      id: { [Op.in]: invalidIds },
     },
   });
 
@@ -307,18 +312,14 @@ async function handlePurge(interaction) {
  * Exported for use by the scheduler.
  */
 export async function generateDailySummaryEmbed(guildId) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
+  const now = new Date();
+  const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
   const submissions = await Submission.findAll({
     where: {
       guildId,
       createdAt: {
-        [Op.gte]: yesterday,
-        [Op.lt]: today,
+        [Op.gte]: since,
       },
     },
     order: [['createdAt', 'ASC']],
@@ -348,7 +349,7 @@ export async function generateDailySummaryEmbed(guildId) {
 
   return new EmbedBuilder()
     .setColor(0xffa116)
-    .setTitle(`Yesterday's LeetCode Summary`)
+    .setTitle(`Last 24 Hours LeetCode Summary`)
     .setDescription(entries.join('\n\n'))
     .setFooter({ text: `${submissions.length} problem(s) solved by ${userSubmissions.size} member(s)` })
     .setTimestamp();
