@@ -2,6 +2,7 @@ import { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, AttachmentBuild
 import { Op } from 'sequelize';
 import { User, StudyLog, VoiceSession, ServerConfig } from '../database/index.ts';
 import { renderStudySummaryImage } from '../utils/summaryImage.js';
+import { renderSpinningAvatarGif } from '../utils/spinGif.js';
 
 export const data = new SlashCommandBuilder()
   .setName('log')
@@ -332,7 +333,7 @@ async function handleSetChannel(interaction) {
   await config.save();
 
   await interaction.reply({
-    content: `Daily study summary will be posted to ${channel} at 9 PM PST.`,
+    content: `Daily study summary will be posted to ${channel} at midnight Pacific.`,
   });
 }
 
@@ -428,7 +429,8 @@ async function handleSummary(interaction) {
   const attachment = await generateStudySummaryImage(interaction.guild.id);
 
   if (attachment) {
-    await interaction.editReply({ files: [attachment] });
+    const gif = await generateTopStudierGif(interaction.guild.id, interaction.client);
+    await interaction.editReply({ files: gif ? [attachment, gif] : [attachment] });
     return;
   }
 
@@ -474,6 +476,41 @@ export async function generateStudySummaryImage(guildId) {
     return new AttachmentBuilder(buffer, { name: 'study-summary.png' });
   } catch (error) {
     console.error('Failed to render study summary image:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Renders a spinning-avatar GIF for whoever studied the most in the last 24h.
+ * Returns null if nobody studied, or if the avatar/GIF could not be produced.
+ * Exported for use by the scheduler.
+ *
+ * @param {string} guildId
+ * @param {import('discord.js').Client} client
+ */
+export async function generateTopStudierGif(guildId, client) {
+  try {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const { entries } = await collectStudyActivity(guildId, since);
+    const top = entries.find(e => e.minutes > 0);
+    if (!top) return null;
+
+    const user = await client.users.fetch(top.discordId);
+    const avatarUrl = user.displayAvatarURL({ extension: 'png', size: 256, forceStatic: true });
+
+    const response = await fetch(avatarUrl);
+    if (!response.ok) return null;
+    const avatar = Buffer.from(await response.arrayBuffer());
+
+    const buffer = await renderSpinningAvatarGif({
+      avatar,
+      username: user.displayName || user.username || top.username,
+      minutes: top.minutes,
+    });
+
+    return new AttachmentBuilder(buffer, { name: 'top-studier.gif' });
+  } catch (error) {
+    console.error('Failed to render top studier GIF:', error.message);
     return null;
   }
 }

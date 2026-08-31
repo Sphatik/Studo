@@ -2,14 +2,18 @@ import cron from 'node-cron';
 import { Op } from 'sequelize';
 import { ServerConfig } from './database/index.ts';
 import { generateDailySummaryEmbed } from './commands/leetcode.js';
-import { generateStudySummaryEmbed, generateStudySummaryImage } from './commands/log.js';
+import { generateStudySummaryEmbed, generateStudySummaryImage, generateTopStudierGif } from './commands/log.js';
+
+// All schedules are pinned to Pacific time so they are unaffected by the
+// server's local timezone and by daylight saving transitions.
+const TIMEZONE = 'America/Los_Angeles';
 
 /**
  * Starts the daily summary schedulers.
  * @param {import('discord.js').Client} client
  */
 export function startScheduler(client) {
-  // LeetCode summary: Run every day at 9:00 AM
+  // LeetCode summary: Run every day at 9:00 AM Pacific
   cron.schedule('0 9 * * *', async () => {
     console.log('Running daily LeetCode summary...');
 
@@ -32,10 +36,10 @@ export function startScheduler(client) {
     }
 
     console.log('Daily LeetCode summary complete.');
-  });
+  }, { timezone: TIMEZONE });
 
-  // Study summary: Run every day at 9:00 PM PST (05:00 UTC next day)
-  cron.schedule('0 5 * * *', async () => {
+  // Study summary: Run every day at midnight Pacific
+  cron.schedule('0 0 * * *', async () => {
     console.log('Running daily study summary...');
 
     const configs = await ServerConfig.findAll({
@@ -49,7 +53,8 @@ export function startScheduler(client) {
 
         const attachment = await generateStudySummaryImage(config.guildId);
         if (attachment) {
-          await channel.send({ files: [attachment] });
+          const gif = await generateTopStudierGif(config.guildId, client);
+          await channel.send({ files: gif ? [attachment, gif] : [attachment] });
           continue;
         }
 
@@ -64,7 +69,7 @@ export function startScheduler(client) {
     }
 
     console.log('Daily study summary complete.');
-  });
+  }, { timezone: TIMEZONE });
 
-  console.log('Scheduler started: LeetCode summary at 9:00 AM, Study summary at 9:00 PM PST');
+  console.log('Scheduler started: LeetCode summary at 9:00 AM Pacific, Study summary at midnight Pacific');
 }
