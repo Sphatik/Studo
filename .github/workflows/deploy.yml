@@ -19,7 +19,6 @@ jobs:
         port: ${{ secrets.VPS_PORT || 22 }}
         script: |
           cd ${{ secrets.VPS_PROJECT_PATH }}
-          git pull origin main
-          npm install --production
-          pm2 restart ecosystem.config.cjs || pm2 start ecosystem.config.cjs
-          pm2 save
+          git fetch origin main
+          git checkout origin/main -- deploy.sh
+          bash deploy.sh

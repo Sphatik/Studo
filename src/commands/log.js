@@ -208,25 +208,24 @@ async function handleStats(interaction) {
   const weekAgo = new Date(today);
   weekAgo.setDate(weekAgo.getDate() - 7);
 
+  // Stats are aggregated across all servers the bot shares with the user,
+  // so study hours carry over no matter where they were earned.
   const [todayLogs, weekLogs, todaySessions, weekSessions] = await Promise.all([
     StudyLog.count({
       where: {
         userDiscordId: targetUser.id,
-        guildId: interaction.guild.id,
         createdAt: { [Op.gte]: today },
       },
     }),
     StudyLog.count({
       where: {
         userDiscordId: targetUser.id,
-        guildId: interaction.guild.id,
         createdAt: { [Op.gte]: weekAgo },
       },
     }),
     VoiceSession.findAll({
       where: {
         userDiscordId: targetUser.id,
-        guildId: interaction.guild.id,
         joinedAt: { [Op.gte]: today },
         leftAt: { [Op.ne]: null },
       },
@@ -234,7 +233,6 @@ async function handleStats(interaction) {
     VoiceSession.findAll({
       where: {
         userDiscordId: targetUser.id,
-        guildId: interaction.guild.id,
         joinedAt: { [Op.gte]: weekAgo },
         leftAt: { [Op.ne]: null },
       },
@@ -259,6 +257,7 @@ async function handleStats(interaction) {
       { name: 'Today', value: `${todayLogs} logs | ${formatTime(todayMinutes)} voice`, inline: true },
       { name: 'This Week', value: `${weekLogs} logs | ${formatTime(weekMinutes)} voice`, inline: true }
     )
+    .setFooter({ text: 'Tracked across all servers' })
     .setTimestamp();
 
   await interaction.reply({ embeds: [embed] });

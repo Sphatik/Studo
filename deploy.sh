@@ -6,19 +6,24 @@ set -e  # Exit on error
 
 echo "🚀 Starting deployment..."
 
-# Pull latest changes
-echo "📥 Pulling latest changes from GitHub..."
-git pull origin main
+# Sync to latest main, discarding any local drift in tracked files.
+# Untracked files (.env, database.sqlite, logs/, tts_cache/) are unaffected.
+echo "📥 Syncing with GitHub..."
+git fetch origin main
+git reset --hard origin/main
 
-# Install/update dependencies
+# Install dependencies exactly as locked (tsx is a devDependency the bot needs at runtime)
 echo "📦 Installing dependencies..."
-npm install --include=dev
+npm ci --include=dev
 
-# Restart the bot with PM2
+# Restart the bot with PM2.
+# delete + start (not restart) so ecosystem.config.cjs changes like exec_mode actually apply.
 echo "🔄 Restarting bot..."
-pm2 restart ecosystem.config.cjs
+pm2 delete studo-bot 2>/dev/null || true
+pm2 start ecosystem.config.cjs
+pm2 save
 
 echo "✅ Deployment complete!"
 echo "📊 Bot status:"
 pm2 status
-pm2 logs studo-bot --lines 20
+pm2 logs studo-bot --lines 20 --nostream
