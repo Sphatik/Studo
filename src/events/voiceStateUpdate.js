@@ -12,9 +12,13 @@ export async function handleVoiceStateUpdate(oldState, newState) {
 
   const config = await ServerConfig.findByPk(guildId);
 
-  const userId = newState.member?.id || oldState.member?.id;
-  const username = newState.member?.user?.username || oldState.member?.user?.username;
+  const member = newState.member || oldState.member;
+  const userId = member?.id;
+  const username = member?.user?.username;
   if (!userId) return;
+
+  // Bots (including Studo itself joining for TTS) don't study
+  if (member?.user?.bot) return;
 
   const oldChannel = oldState.channel;
   const newChannel = newState.channel;

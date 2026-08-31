@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { Client, Events, GatewayIntentBits, type Interaction } from 'discord.js';
-import { sequelize } from './database/index.js';
+import { sequelize, VoiceSession } from './database/index.js';
 import { execute as leetcodeExecute } from './commands/leetcode.js';
 import { execute as logExecute } from './commands/log.js';
 import {
@@ -31,6 +31,14 @@ client.on(Events.ClientReady, async (readyClient) => {
   await sequelize.sync({ alter: true });
   await sequelize.query('PRAGMA foreign_keys = ON;');
   console.log('Database synced!');
+
+  // One-time cleanup: the bot used to track its own voice time (TTS joins)
+  const removed = await VoiceSession.destroy({
+    where: { userDiscordId: readyClient.user.id },
+  });
+  if (removed > 0) {
+    console.log(`Removed ${removed} voice session(s) tracked for the bot itself.`);
+  }
 
   loadTTSCache();
   initPomodoroSpeaker(readyClient);
