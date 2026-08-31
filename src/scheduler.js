@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { Op } from 'sequelize';
 import { ServerConfig } from './database/index.ts';
 import { generateDailySummaryEmbed } from './commands/leetcode.js';
-import { generateStudySummaryEmbed } from './commands/log.js';
+import { generateStudySummaryEmbed, generateStudySummaryImage } from './commands/log.js';
 
 /**
  * Starts the daily summary schedulers.
@@ -47,6 +47,13 @@ export function startScheduler(client) {
         const channel = await client.channels.fetch(config.studySummaryChannelId);
         if (!channel) continue;
 
+        const attachment = await generateStudySummaryImage(config.guildId);
+        if (attachment) {
+          await channel.send({ files: [attachment] });
+          continue;
+        }
+
+        // Fall back to the embed if the image could not be generated
         const embed = await generateStudySummaryEmbed(config.guildId);
         if (!embed) continue;
 

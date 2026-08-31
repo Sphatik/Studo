@@ -16,6 +16,10 @@ git reset --hard origin/main
 echo "📦 Installing dependencies..."
 npm ci --include=dev
 
+# Register slash commands so new/changed commands show up in Discord
+echo "📝 Registering slash commands..."
+npx tsx src/register.js
+
 # Restart the bot with PM2.
 # delete + start (not restart) so ecosystem.config.cjs changes like exec_mode actually apply.
 echo "🔄 Restarting bot..."

@@ -1,6 +1,7 @@
-import { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, AttachmentBuilder } from 'discord.js';
 import { Op } from 'sequelize';
 import { User, StudyLog, VoiceSession, ServerConfig } from '../database/index.ts';
+import { renderStudySummaryImage } from '../utils/summaryImage.js';
 
 export const data = new SlashCommandBuilder()
   .setName('log')
@@ -58,6 +59,21 @@ export const data = new SlashCommandBuilder()
     subcommand
       .setName('summary')
       .setDescription('Preview today\'s daily summary')
+  )
+  .addSubcommand(subcommand =>
+    subcommand
+      .setName('leaderboard')
+      .setDescription('Study time leaderboard')
+      .addStringOption(option =>
+        option
+          .setName('timeframe')
+          .setDescription('Ranking window (default: day)')
+          .setRequired(false)
+          .addChoices(
+            { name: 'Day (last 24 hours)', value: 'day' },
+            { name: 'Week (last 7 days)', value: 'week' }
+          )
+      )
   );
 
 export async function execute(interaction) {
@@ -81,6 +97,9 @@ export async function execute(interaction) {
       break;
     case 'summary':
       await handleSummary(interaction);
+      break;
+    case 'leaderboard':
+      await handleLeaderboard(interaction);
       break;
   }
 }
@@ -317,20 +336,147 @@ async function handleSetChannel(interaction) {
   });
 }
 
+/**
+ * Aggregates study activity (voice minutes + log counts) per user for a guild
+ * since the given time. Returns entries sorted by voice minutes descending.
+ */
+async function collectStudyActivity(guildId, since) {
+  const [logs, sessions] = await Promise.all([
+    StudyLog.findAll({
+      where: {
+        guildId,
+        createdAt: { [Op.gte]: since },
+      },
+    }),
+    VoiceSession.findAll({
+      where: {
+        guildId,
+        joinedAt: { [Op.gte]: since },
+        leftAt: { [Op.ne]: null },
+      },
+    }),
+  ]);
+
+  const byUser = new Map();
+  const getEntry = (discordId) => {
+    if (!byUser.has(discordId)) {
+      byUser.set(discordId, { discordId, minutes: 0, logCount: 0 });
+    }
+    return byUser.get(discordId);
+  };
+
+  for (const session of sessions) {
+    getEntry(session.userDiscordId).minutes += session.durationMinutes || 0;
+  }
+  for (const log of logs) {
+    getEntry(log.userDiscordId).logCount += 1;
+  }
+
+  const entries = await Promise.all(
+    Array.from(byUser.values()).map(async (entry) => {
+      const user = await User.findByPk(entry.discordId);
+      return { ...entry, username: user?.username || 'Unknown' };
+    })
+  );
+
+  entries.sort((a, b) => b.minutes - a.minutes);
+
+  return {
+    entries,
+    totalMinutes: entries.reduce((sum, e) => sum + e.minutes, 0),
+    totalLogs: logs.length,
+  };
+}
+
+async function handleLeaderboard(interaction) {
+  const timeframe = interaction.options.getString('timeframe') || 'day';
+  const windowMs = timeframe === 'week'
+    ? 7 * 24 * 60 * 60 * 1000
+    : 24 * 60 * 60 * 1000;
+  const since = new Date(Date.now() - windowMs);
+
+  const { entries } = await collectStudyActivity(interaction.guild.id, since);
+  const ranked = entries.filter(e => e.minutes > 0).slice(0, 10);
+
+  if (ranked.length === 0) {
+    await interaction.reply({
+      content: `No study time tracked in the last ${timeframe === 'week' ? '7 days' : '24 hours'} yet. Hop into a study voice channel!`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const medals = ['🥇', '🥈', '🥉'];
+  const lines = ranked.map((entry, i) => {
+    const rank = medals[i] || `**${i + 1}.**`;
+    const logsPart = entry.logCount > 0 ? ` | ${entry.logCount} log${entry.logCount === 1 ? '' : 's'}` : '';
+    return `${rank} **${entry.username}** — ${formatDuration(entry.minutes)}${logsPart}`;
+  });
+
+  const embed = new EmbedBuilder()
+    .setColor(0xf1c40f)
+    .setTitle(`Study Leaderboard — ${timeframe === 'week' ? 'Last 7 Days' : 'Last 24 Hours'}`)
+    .setDescription(lines.join('\n'))
+    .setFooter({ text: `${ranked.length} member(s) ranked by voice study time` })
+    .setTimestamp();
+
+  await interaction.reply({ embeds: [embed] });
+}
+
 async function handleSummary(interaction) {
+  await interaction.deferReply();
+
+  const attachment = await generateStudySummaryImage(interaction.guild.id);
+
+  if (attachment) {
+    await interaction.editReply({ files: [attachment] });
+    return;
+  }
+
+  // Fall back to the embed if the image could not be generated
   const embed = await generateStudySummaryEmbed(interaction.guild.id);
 
   if (!embed) {
-    await interaction.reply({
+    await interaction.editReply({
       content: 'No study activity today yet. Use `/log add` to log what you\'re working on!',
-      ephemeral: true,
     });
     return;
   }
 
   embed.setTitle(`Daily Study Summary`);
 
-  await interaction.reply({ embeds: [embed] });
+  await interaction.editReply({ embeds: [embed] });
+}
+
+/**
+ * Renders the last-24h study summary as a PNG attachment.
+ * Returns null if there was no activity or rendering failed.
+ * Exported for use by the scheduler.
+ */
+export async function generateStudySummaryImage(guildId) {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const activity = await collectStudyActivity(guildId, since);
+
+  if (activity.entries.length === 0) return null;
+
+  try {
+    const buffer = renderStudySummaryImage({
+      title: 'Daily Study Summary',
+      subtitle: new Date().toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      }),
+      entries: activity.entries,
+      totalMinutes: activity.totalMinutes,
+      totalLogs: activity.totalLogs,
+    });
+    return new AttachmentBuilder(buffer, { name: 'study-summary.png' });
+  } catch (error) {
+    console.error('Failed to render study summary image:', error.message);
+    return null;
+  }
 }
 
 /**
