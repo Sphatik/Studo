@@ -4,6 +4,15 @@
 
 set -e  # Exit on error
 
+# Serialize deploys: concurrent runs (e.g. two quick pushes) race npm ci in the
+# same node_modules and fail with ENOTEMPTY. Wait up to 15 min for the lock.
+LOCK_FILE="/tmp/studo-deploy.lock"
+exec 9>"$LOCK_FILE"
+if ! flock --wait 900 9; then
+  echo "❌ Could not acquire deploy lock after 15 minutes; another deploy is stuck."
+  exit 1
+fi
+
 echo "🚀 Starting deployment..."
 
 # Sync to latest main, discarding any local drift in tracked files.
