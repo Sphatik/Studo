@@ -409,15 +409,14 @@ async function handleLeaderboard(interaction) {
   const medals = ['🥇', '🥈', '🥉'];
   const lines = ranked.map((entry, i) => {
     const rank = medals[i] || `**${i + 1}.**`;
-    const logsPart = entry.logCount > 0 ? ` | ${entry.logCount} log${entry.logCount === 1 ? '' : 's'}` : '';
-    return `${rank} **${entry.username}** — ${formatDuration(entry.minutes)}${logsPart}`;
+    return `${rank} **${entry.username}** — ${formatDuration(entry.minutes)}`;
   });
 
   const embed = new EmbedBuilder()
     .setColor(0xf1c40f)
     .setTitle(`Study Leaderboard — ${timeframe === 'week' ? 'Last 7 Days' : 'Last 24 Hours'}`)
     .setDescription(lines.join('\n'))
-    .setFooter({ text: `${ranked.length} member(s) ranked by voice study time` })
+    .setFooter({ text: `${ranked.length} member(s) ranked by time studied in voice` })
     .setTimestamp();
 
   await interaction.reply({ embeds: [embed] });
