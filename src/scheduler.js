@@ -51,15 +51,15 @@ export function startScheduler(client) {
         const channel = await client.channels.fetch(config.studySummaryChannelId);
         if (!channel) continue;
 
-        const attachment = await generateStudySummaryImage(config.guildId);
+        const attachment = await generateStudySummaryImage();
         if (attachment) {
-          const gif = await generateTopStudierGif(config.guildId, client);
+          const gif = await generateTopStudierGif(client);
           await channel.send({ files: gif ? [attachment, gif] : [attachment] });
           continue;
         }
 
         // Fall back to the embed if the image could not be generated
-        const embed = await generateStudySummaryEmbed(config.guildId);
+        const embed = await generateStudySummaryEmbed();
         if (!embed) continue;
 
         await channel.send({ embeds: [embed] });

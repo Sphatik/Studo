@@ -50,13 +50,12 @@ function truncate(ctx, text, maxWidth) {
  * @param {object} data
  * @param {string} data.title - Card title.
  * @param {string} data.subtitle - Date/timeframe line under the title.
- * @param {Array<{username: string, minutes: number, logCount: number}>} data.entries
- *   Per-user activity, will be sorted by minutes descending.
+ * @param {Array<{username: string, minutes: number}>} data.entries
+ *   Per-user study time, will be sorted by minutes descending.
  * @param {number} data.totalMinutes - Total voice minutes across all users.
- * @param {number} data.totalLogs - Total study logs across all users.
  * @returns {Buffer} PNG buffer.
  */
-export function renderStudySummaryImage({ title, subtitle, entries, totalMinutes, totalLogs }) {
+export function renderStudySummaryImage({ title, subtitle, entries, totalMinutes }) {
   const rows = [...entries].sort((a, b) => b.minutes - a.minutes).slice(0, 10);
   const height = HEADER_H + rows.length * ROW_H + FOOTER_H + PAD;
 
@@ -132,12 +131,6 @@ export function renderStudySummaryImage({ title, subtitle, entries, totalMinutes
     const valueText = formatDuration(row.minutes);
     ctx.fillText(valueText, WIDTH - PAD - ctx.measureText(valueText).width, midY + 1);
 
-    if (row.logCount > 0) {
-      ctx.font = `400 14px ${FONT}`;
-      ctx.fillStyle = TEXT_MUTED;
-      const logText = `${row.logCount} log${row.logCount === 1 ? '' : 's'}`;
-      ctx.fillText(logText, WIDTH - PAD - ctx.measureText(logText).width, midY + 20);
-    }
   });
 
   // Footer
@@ -145,7 +138,7 @@ export function renderStudySummaryImage({ title, subtitle, entries, totalMinutes
   ctx.font = `400 16px ${FONT}`;
   ctx.fillStyle = TEXT_MUTED;
   ctx.fillText(
-    `${entries.length} member(s) active | ${totalLogs} study logs`,
+    `${entries.length} member(s) active across all servers`,
     PAD,
     footerY
   );

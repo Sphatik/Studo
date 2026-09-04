@@ -1,27 +1,16 @@
 import { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, AttachmentBuilder } from 'discord.js';
 import { Op } from 'sequelize';
-import { User, StudyLog, VoiceSession, ServerConfig } from '../database/index.ts';
+import { User, VoiceSession, ServerConfig } from '../database/index.ts';
 import { renderStudySummaryImage } from '../utils/summaryImage.js';
 import { renderSpinningAvatarGif } from '../utils/spinGif.js';
 
 export const data = new SlashCommandBuilder()
   .setName('log')
-  .setDescription('Study log commands')
-  .addSubcommand(subcommand =>
-    subcommand
-      .setName('add')
-      .setDescription('Log what you are studying')
-      .addStringOption(option =>
-        option
-          .setName('activity')
-          .setDescription('What are you working on?')
-          .setRequired(true)
-      )
-  )
+  .setDescription('Study time commands')
   .addSubcommand(subcommand =>
     subcommand
       .setName('today')
-      .setDescription('View today\'s study logs')
+      .setDescription('View today\'s study time')
   )
   .addSubcommand(subcommand =>
     subcommand
@@ -64,7 +53,7 @@ export const data = new SlashCommandBuilder()
   .addSubcommand(subcommand =>
     subcommand
       .setName('leaderboard')
-      .setDescription('Study time leaderboard')
+      .setDescription('Global study time leaderboard')
       .addStringOption(option =>
         option
           .setName('timeframe')
@@ -81,9 +70,6 @@ export async function execute(interaction) {
   const subcommand = interaction.options.getSubcommand();
 
   switch (subcommand) {
-    case 'add':
-      await handleAdd(interaction);
-      break;
     case 'today':
       await handleToday(interaction);
       break;
@@ -105,29 +91,6 @@ export async function execute(interaction) {
   }
 }
 
-async function handleAdd(interaction) {
-  const activity = interaction.options.getString('activity');
-
-  await User.findOrCreate({
-    where: { discordId: interaction.user.id },
-    defaults: { username: interaction.user.username },
-  });
-
-  await StudyLog.create({
-    userDiscordId: interaction.user.id,
-    guildId: interaction.guild.id,
-    content: activity,
-  });
-
-  const embed = new EmbedBuilder()
-    .setColor(0x57f287)
-    .setDescription(`Logged: **${activity}**`)
-    .setFooter({ text: `${interaction.user.username}` })
-    .setTimestamp();
-
-  await interaction.reply({ embeds: [embed] });
-}
-
 function formatDuration(minutes) {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
@@ -135,85 +98,63 @@ function formatDuration(minutes) {
   return `${hours}h ${mins}m`;
 }
 
-async function handleToday(interaction) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const logs = await StudyLog.findAll({
-    where: {
-      guildId: interaction.guild.id,
-      createdAt: { [Op.gte]: today },
-    },
-    order: [['createdAt', 'ASC']],
-  });
-
+/**
+ * Aggregates completed study voice time per user since the given time.
+ * Sessions are counted across every server the bot is in, so the numbers are
+ * global rather than per-guild. Returns entries sorted by minutes descending.
+ */
+async function collectStudyActivity(since) {
   const sessions = await VoiceSession.findAll({
     where: {
-      guildId: interaction.guild.id,
-      joinedAt: { [Op.gte]: today },
+      joinedAt: { [Op.gte]: since },
       leftAt: { [Op.ne]: null },
     },
   });
 
-  if (logs.length === 0 && sessions.length === 0) {
+  const byUser = new Map();
+  for (const session of sessions) {
+    const current = byUser.get(session.userDiscordId) || { discordId: session.userDiscordId, minutes: 0 };
+    current.minutes += session.durationMinutes || 0;
+    byUser.set(session.userDiscordId, current);
+  }
+
+  const entries = await Promise.all(
+    Array.from(byUser.values()).map(async (entry) => {
+      const user = await User.findByPk(entry.discordId);
+      return { ...entry, username: user?.username || 'Unknown' };
+    })
+  );
+
+  entries.sort((a, b) => b.minutes - a.minutes);
+
+  return {
+    entries,
+    totalMinutes: entries.reduce((sum, e) => sum + e.minutes, 0),
+  };
+}
+
+async function handleToday(interaction) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const { entries, totalMinutes } = await collectStudyActivity(today);
+  const active = entries.filter(e => e.minutes > 0);
+
+  if (active.length === 0) {
     await interaction.reply({
-      content: 'No study activity today yet. Use `/log add` to log what you\'re working on!',
+      content: 'No study time tracked today yet. Hop into a study voice channel!',
       ephemeral: true,
     });
     return;
   }
 
-  const userActivity = new Map();
-
-  for (let i = 0; i < logs.length; i++) {
-    const log = logs[i];
-    if (!userActivity.has(log.userDiscordId)) {
-      userActivity.set(log.userDiscordId, { logs: [], minutes: 0 });
-    }
-
-    const nextLog = logs.find(
-      (l, j) => j > i && l.userDiscordId === log.userDiscordId
-    );
-    const endTime = nextLog ? new Date(nextLog.createdAt) : new Date();
-    const durationMins = Math.floor((endTime - new Date(log.createdAt)) / 60000);
-
-    userActivity.get(log.userDiscordId).logs.push({
-      content: log.content,
-      duration: durationMins,
-    });
-  }
-
-  for (const session of sessions) {
-    if (!userActivity.has(session.userDiscordId)) {
-      userActivity.set(session.userDiscordId, { logs: [], minutes: 0 });
-    }
-    userActivity.get(session.userDiscordId).minutes += session.durationMinutes || 0;
-  }
-
-  const entries = await Promise.all(
-    Array.from(userActivity.entries()).map(async ([discordId, data]) => {
-      const user = await User.findByPk(discordId);
-      const username = user?.username || 'Unknown';
-      const hours = Math.floor(data.minutes / 60);
-      const mins = data.minutes % 60;
-      const timeStr = data.minutes > 0
-        ? `${hours > 0 ? `${hours}h ` : ''}${mins}m in voice`
-        : '';
-
-      const logsStr = data.logs.length > 0
-        ? data.logs.map(l => `${l.content} (${formatDuration(l.duration)})`).join(', ')
-        : '';
-
-      const parts = [logsStr, timeStr].filter(Boolean);
-      return `**${username}**: ${parts.join(' | ') || 'Active in voice'}`;
-    })
-  );
+  const lines = active.map(e => `**${e.username}** — ${formatDuration(e.minutes)}`);
 
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle(`Today's Study Activity`)
-    .setDescription(entries.join('\n\n'))
-    .setFooter({ text: `${userActivity.size} member(s) active today` })
+    .setTitle('Today\'s Study Time')
+    .setDescription(lines.join('\n'))
+    .setFooter({ text: `${active.length} member(s) | ${formatDuration(totalMinutes)} total` })
     .setTimestamp();
 
   await interaction.reply({ embeds: [embed] });
@@ -230,19 +171,7 @@ async function handleStats(interaction) {
 
   // Stats are aggregated across all servers the bot shares with the user,
   // so study hours carry over no matter where they were earned.
-  const [todayLogs, weekLogs, todaySessions, weekSessions] = await Promise.all([
-    StudyLog.count({
-      where: {
-        userDiscordId: targetUser.id,
-        createdAt: { [Op.gte]: today },
-      },
-    }),
-    StudyLog.count({
-      where: {
-        userDiscordId: targetUser.id,
-        createdAt: { [Op.gte]: weekAgo },
-      },
-    }),
+  const [todaySessions, weekSessions] = await Promise.all([
     VoiceSession.findAll({
       where: {
         userDiscordId: targetUser.id,
@@ -262,20 +191,13 @@ async function handleStats(interaction) {
   const todayMinutes = todaySessions.reduce((sum, s) => sum + (s.durationMinutes || 0), 0);
   const weekMinutes = weekSessions.reduce((sum, s) => sum + (s.durationMinutes || 0), 0);
 
-  const formatTime = (minutes) => {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    if (hours === 0) return `${mins}m`;
-    return `${hours}h ${mins}m`;
-  };
-
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle(`${targetUser.username}'s Study Stats`)
     .setThumbnail(targetUser.displayAvatarURL())
     .addFields(
-      { name: 'Today', value: `${todayLogs} logs | ${formatTime(todayMinutes)} voice`, inline: true },
-      { name: 'This Week', value: `${weekLogs} logs | ${formatTime(weekMinutes)} voice`, inline: true }
+      { name: 'Today', value: formatDuration(todayMinutes), inline: true },
+      { name: 'This Week', value: formatDuration(weekMinutes), inline: true }
     )
     .setFooter({ text: 'Tracked across all servers' })
     .setTimestamp();
@@ -337,58 +259,6 @@ async function handleSetChannel(interaction) {
   });
 }
 
-/**
- * Aggregates study activity (voice minutes + log counts) per user for a guild
- * since the given time. Returns entries sorted by voice minutes descending.
- */
-async function collectStudyActivity(guildId, since) {
-  const [logs, sessions] = await Promise.all([
-    StudyLog.findAll({
-      where: {
-        guildId,
-        createdAt: { [Op.gte]: since },
-      },
-    }),
-    VoiceSession.findAll({
-      where: {
-        guildId,
-        joinedAt: { [Op.gte]: since },
-        leftAt: { [Op.ne]: null },
-      },
-    }),
-  ]);
-
-  const byUser = new Map();
-  const getEntry = (discordId) => {
-    if (!byUser.has(discordId)) {
-      byUser.set(discordId, { discordId, minutes: 0, logCount: 0 });
-    }
-    return byUser.get(discordId);
-  };
-
-  for (const session of sessions) {
-    getEntry(session.userDiscordId).minutes += session.durationMinutes || 0;
-  }
-  for (const log of logs) {
-    getEntry(log.userDiscordId).logCount += 1;
-  }
-
-  const entries = await Promise.all(
-    Array.from(byUser.values()).map(async (entry) => {
-      const user = await User.findByPk(entry.discordId);
-      return { ...entry, username: user?.username || 'Unknown' };
-    })
-  );
-
-  entries.sort((a, b) => b.minutes - a.minutes);
-
-  return {
-    entries,
-    totalMinutes: entries.reduce((sum, e) => sum + e.minutes, 0),
-    totalLogs: logs.length,
-  };
-}
-
 async function handleLeaderboard(interaction) {
   const timeframe = interaction.options.getString('timeframe') || 'day';
   const windowMs = timeframe === 'week'
@@ -396,7 +266,7 @@ async function handleLeaderboard(interaction) {
     : 24 * 60 * 60 * 1000;
   const since = new Date(Date.now() - windowMs);
 
-  const { entries } = await collectStudyActivity(interaction.guild.id, since);
+  const { entries } = await collectStudyActivity(since);
   const ranked = entries.filter(e => e.minutes > 0).slice(0, 10);
 
   if (ranked.length === 0) {
@@ -415,7 +285,7 @@ async function handleLeaderboard(interaction) {
 
   const embed = new EmbedBuilder()
     .setColor(0xf1c40f)
-    .setTitle(`Study Leaderboard — ${timeframe === 'week' ? 'Last 7 Days' : 'Last 24 Hours'}`)
+    .setTitle(`Global Study Leaderboard — ${timeframe === 'week' ? 'Last 7 Days' : 'Last 24 Hours'}`)
     .setDescription(lines.join('\n'))
     .setFooter({ text: `${ranked.length} member(s) ranked by time studied in voice` })
     .setTimestamp();
@@ -426,37 +296,37 @@ async function handleLeaderboard(interaction) {
 async function handleSummary(interaction) {
   await interaction.deferReply();
 
-  const attachment = await generateStudySummaryImage(interaction.guild.id);
+  const attachment = await generateStudySummaryImage();
 
   if (attachment) {
-    const gif = await generateTopStudierGif(interaction.guild.id, interaction.client);
+    const gif = await generateTopStudierGif(interaction.client);
     await interaction.editReply({ files: gif ? [attachment, gif] : [attachment] });
     return;
   }
 
   // Fall back to the embed if the image could not be generated
-  const embed = await generateStudySummaryEmbed(interaction.guild.id);
+  const embed = await generateStudySummaryEmbed();
 
   if (!embed) {
     await interaction.editReply({
-      content: 'No study activity today yet. Use `/log add` to log what you\'re working on!',
+      content: 'No study time tracked today yet. Hop into a study voice channel!',
     });
     return;
   }
 
-  embed.setTitle(`Daily Study Summary`);
+  embed.setTitle('Daily Study Summary');
 
   await interaction.editReply({ embeds: [embed] });
 }
 
 /**
- * Renders the last-24h study summary as a PNG attachment.
+ * Renders the global last-24h study summary as a PNG attachment.
  * Returns null if there was no activity or rendering failed.
  * Exported for use by the scheduler.
  */
-export async function generateStudySummaryImage(guildId) {
+export async function generateStudySummaryImage() {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const activity = await collectStudyActivity(guildId, since);
+  const activity = await collectStudyActivity(since);
 
   if (activity.entries.length === 0) return null;
 
@@ -471,7 +341,6 @@ export async function generateStudySummaryImage(guildId) {
       }),
       entries: activity.entries,
       totalMinutes: activity.totalMinutes,
-      totalLogs: activity.totalLogs,
     });
     return new AttachmentBuilder(buffer, { name: 'study-summary.png' });
   } catch (error) {
@@ -481,17 +350,16 @@ export async function generateStudySummaryImage(guildId) {
 }
 
 /**
- * Renders a spinning-avatar GIF for whoever studied the most in the last 24h.
- * Returns null if nobody studied, or if the avatar/GIF could not be produced.
- * Exported for use by the scheduler.
+ * Renders a spinning-avatar GIF for whoever studied the most in the last 24h
+ * across all servers. Returns null if nobody studied, or if the avatar/GIF
+ * could not be produced. Exported for use by the scheduler.
  *
- * @param {string} guildId
  * @param {import('discord.js').Client} client
  */
-export async function generateTopStudierGif(guildId, client) {
+export async function generateTopStudierGif(client) {
   try {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const { entries } = await collectStudyActivity(guildId, since);
+    const { entries } = await collectStudyActivity(since);
     const top = entries.find(e => e.minutes > 0);
     if (!top) return null;
 
@@ -516,89 +384,24 @@ export async function generateTopStudierGif(guildId, client) {
 }
 
 /**
- * Generates the daily study summary embed for a guild.
+ * Generates the global daily study summary embed.
  * Exported for use by the scheduler.
  */
-export async function generateStudySummaryEmbed(guildId) {
-  const now = new Date();
-  const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+export async function generateStudySummaryEmbed() {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const { entries, totalMinutes } = await collectStudyActivity(since);
+  const active = entries.filter(e => e.minutes > 0);
 
-  const logs = await StudyLog.findAll({
-    where: {
-      guildId,
-      createdAt: { [Op.gte]: since },
-    },
-    order: [['createdAt', 'ASC']],
-  });
+  if (active.length === 0) return null;
 
-  const sessions = await VoiceSession.findAll({
-    where: {
-      guildId,
-      joinedAt: { [Op.gte]: since },
-      leftAt: { [Op.ne]: null },
-    },
-  });
-
-  if (logs.length === 0 && sessions.length === 0) {
-    return null;
-  }
-
-  const userActivity = new Map();
-
-  for (let i = 0; i < logs.length; i++) {
-    const log = logs[i];
-    if (!userActivity.has(log.userDiscordId)) {
-      userActivity.set(log.userDiscordId, { logs: [], minutes: 0 });
-    }
-
-    const nextLog = logs.find(
-      (l, j) => j > i && l.userDiscordId === log.userDiscordId
-    );
-    const endTime = nextLog ? new Date(nextLog.createdAt) : new Date();
-    const durationMins = Math.floor((endTime - new Date(log.createdAt)) / 60000);
-
-    userActivity.get(log.userDiscordId).logs.push({
-      content: log.content,
-      duration: durationMins,
-    });
-  }
-
-  for (const session of sessions) {
-    if (!userActivity.has(session.userDiscordId)) {
-      userActivity.set(session.userDiscordId, { logs: [], minutes: 0 });
-    }
-    userActivity.get(session.userDiscordId).minutes += session.durationMinutes || 0;
-  }
-
-  const entries = await Promise.all(
-    Array.from(userActivity.entries()).map(async ([discordId, data]) => {
-      const user = await User.findByPk(discordId);
-      const username = user?.username || 'Unknown';
-      const hours = Math.floor(data.minutes / 60);
-      const mins = data.minutes % 60;
-      const timeStr = data.minutes > 0
-        ? `${hours > 0 ? `${hours}h ` : ''}${mins}m in voice`
-        : '';
-
-      const logsStr = data.logs.length > 0
-        ? data.logs.map(l => `${l.content} (${formatDuration(l.duration)})`).join(', ')
-        : '';
-
-      const parts = [logsStr, timeStr].filter(Boolean);
-      return `**${username}**: ${parts.join(' | ') || 'Active in voice'}`;
-    })
-  );
-
-  const totalMinutes = sessions.reduce((sum, s) => sum + (s.durationMinutes || 0), 0);
-  const totalHours = Math.floor(totalMinutes / 60);
-  const totalMins = totalMinutes % 60;
+  const lines = active
+    .slice(0, 10)
+    .map((e, i) => `**${i + 1}.** ${e.username} — ${formatDuration(e.minutes)}`);
 
   return new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle(`Last 24 Hours Study Summary`)
-    .setDescription(entries.join('\n\n'))
-    .setFooter({
-      text: `${userActivity.size} member(s) | ${logs.length} logs | ${totalHours}h ${totalMins}m total voice time`
-    })
+    .setTitle('Last 24 Hours Study Summary')
+    .setDescription(lines.join('\n'))
+    .setFooter({ text: `${active.length} member(s) | ${formatDuration(totalMinutes)} total study time` })
     .setTimestamp();
 }
