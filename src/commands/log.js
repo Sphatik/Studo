@@ -91,6 +91,30 @@ export async function execute(interaction) {
   }
 }
 
+const PACIFIC_TIMEZONE = 'America/Los_Angeles';
+
+/**
+ * Returns the instant that the current Pacific calendar day started (midnight
+ * Pacific). Summaries cover only that day, so at 1:00 AM Pacific they contain
+ * one hour of data rather than a rolling 24-hour window.
+ */
+export function pacificDayStart(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: PACIFIC_TIMEZONE,
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(now);
+
+  const get = (type) => Number(parts.find(p => p.type === type)?.value ?? 0);
+  const hours = get('hour') % 24;
+  const elapsedMs =
+    ((hours * 60 + get('minute')) * 60 + get('second')) * 1000 + now.getMilliseconds();
+
+  return new Date(now.getTime() - elapsedMs);
+}
+
 function formatDuration(minutes) {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
@@ -134,8 +158,7 @@ async function collectStudyActivity(since) {
 }
 
 async function handleToday(interaction) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = pacificDayStart();
 
   const { entries, totalMinutes } = await collectStudyActivity(today);
   const active = entries.filter(e => e.minutes > 0);
@@ -163,8 +186,7 @@ async function handleToday(interaction) {
 async function handleStats(interaction) {
   const targetUser = interaction.options.getUser('user') || interaction.user;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = pacificDayStart();
 
   const weekAgo = new Date(today);
   weekAgo.setDate(weekAgo.getDate() - 7);
@@ -255,7 +277,7 @@ async function handleSetChannel(interaction) {
   await config.save();
 
   await interaction.reply({
-    content: `Daily study summary will be posted to ${channel} at midnight Pacific.`,
+    content: `Daily study summary will be posted to ${channel} at 11:59 PM Pacific.`,
   });
 }
 
@@ -320,12 +342,12 @@ async function handleSummary(interaction) {
 }
 
 /**
- * Renders the global last-24h study summary as a PNG attachment.
+ * Renders the global study summary for the current Pacific day as a PNG.
  * Returns null if there was no activity or rendering failed.
  * Exported for use by the scheduler.
  */
 export async function generateStudySummaryImage() {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const since = pacificDayStart();
   const activity = await collectStudyActivity(since);
 
   if (activity.entries.length === 0) return null;
@@ -334,6 +356,7 @@ export async function generateStudySummaryImage() {
     const buffer = renderStudySummaryImage({
       title: 'Daily Study Summary',
       subtitle: new Date().toLocaleDateString('en-US', {
+        timeZone: PACIFIC_TIMEZONE,
         weekday: 'long',
         month: 'long',
         day: 'numeric',
@@ -350,15 +373,15 @@ export async function generateStudySummaryImage() {
 }
 
 /**
- * Renders a spinning-avatar GIF for whoever studied the most in the last 24h
- * across all servers. Returns null if nobody studied, or if the avatar/GIF
+ * Renders a spinning-avatar GIF for whoever studied the most so far on the
+ * current Pacific day, across all servers. Returns null if nobody studied, or if the avatar/GIF
  * could not be produced. Exported for use by the scheduler.
  *
  * @param {import('discord.js').Client} client
  */
 export async function generateTopStudierGif(client) {
   try {
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const since = pacificDayStart();
     const { entries } = await collectStudyActivity(since);
     const top = entries.find(e => e.minutes > 0);
     if (!top) return null;
@@ -388,7 +411,7 @@ export async function generateTopStudierGif(client) {
  * Exported for use by the scheduler.
  */
 export async function generateStudySummaryEmbed() {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const since = pacificDayStart();
   const { entries, totalMinutes } = await collectStudyActivity(since);
   const active = entries.filter(e => e.minutes > 0);
 
@@ -400,7 +423,7 @@ export async function generateStudySummaryEmbed() {
 
   return new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle('Last 24 Hours Study Summary')
+    .setTitle('Daily Study Summary')
     .setDescription(lines.join('\n'))
     .setFooter({ text: `${active.length} member(s) | ${formatDuration(totalMinutes)} total study time` })
     .setTimestamp();

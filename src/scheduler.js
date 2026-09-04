@@ -38,8 +38,9 @@ export function startScheduler(client) {
     console.log('Daily LeetCode summary complete.');
   }, { timezone: TIMEZONE });
 
-  // Study summary: Run every day at midnight Pacific
-  cron.schedule('0 0 * * *', async () => {
+  // Study summary: Run at 11:59 PM Pacific so it covers the full Pacific day
+  // that is about to end (summaries only include the current Pacific day).
+  cron.schedule('59 23 * * *', async () => {
     console.log('Running daily study summary...');
 
     const configs = await ServerConfig.findAll({
@@ -71,5 +72,5 @@ export function startScheduler(client) {
     console.log('Daily study summary complete.');
   }, { timezone: TIMEZONE });
 
-  console.log('Scheduler started: LeetCode summary at 9:00 AM Pacific, Study summary at midnight Pacific');
+  console.log('Scheduler started: LeetCode summary at 9:00 AM Pacific, Study summary at 11:59 PM Pacific');
 }
